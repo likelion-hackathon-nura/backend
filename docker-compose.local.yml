@@ -1,0 +1,36 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: nura-mysql
+    restart: unless-stopped
+
+    ports:
+      - "3308:3306"
+
+    environment:
+      MYSQL_DATABASE: nura
+      MYSQL_USER: nura
+      MYSQL_PASSWORD: nura1234
+      MYSQL_ROOT_PASSWORD: root1234
+      TZ: Asia/Seoul
+
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+
+    volumes:
+      - nura-mysql-data:/var/lib/mysql
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  nura-mysql-data:
