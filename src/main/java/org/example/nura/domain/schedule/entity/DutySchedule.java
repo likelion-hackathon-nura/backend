@@ -147,5 +147,11 @@ public class DutySchedule extends BaseTimeEntity {
                     "근무일은 시작 시간과 종료 시간이 필요합니다."
             );
         }
+
+        if (startTime.equals(endTime)) {
+            throw new IllegalArgumentException(
+                    "근무 시작 시간과 종료 시간은 같을 수 없습니다."
+            );
+        }
     }
 }

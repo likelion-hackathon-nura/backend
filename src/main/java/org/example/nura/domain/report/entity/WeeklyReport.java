@@ -99,9 +99,9 @@ public class WeeklyReport extends BaseTimeEntity {
             );
         }
 
-        if (weekEndDate.isBefore(weekStartDate)) {
+        if (!weekEndDate.equals(weekStartDate.plusDays(6))) {
             throw new IllegalArgumentException(
-                    "주간 리포트 종료일은 시작일보다 이전일 수 없습니다."
+                    "주간 리포트 종료일은 시작일로부터 6일 후여야 합니다."
             );
         }
     }

@@ -102,7 +102,7 @@ public class TimeBlock extends BaseTimeEntity {
             Boolean completed
     ) {
         validateTime(startAt, endAt);
-        validateSource(source, customEvent);
+        validateSource(allocation, source, customEvent);
 
         return new TimeBlock(
                 allocation,
@@ -148,16 +148,28 @@ public class TimeBlock extends BaseTimeEntity {
     }
 
     private static void validateSource(
+            DailyTimeAllocation allocation,
             TimeBlockSource source,
             CustomEvent customEvent
     ) {
-        if (source == TimeBlockSource.MANUAL && customEvent == null) {
-            throw new IllegalArgumentException(
-                    "수동 일정 블록은 CustomEvent가 필요합니다."
-            );
+        if (source == TimeBlockSource.MANUAL) {
+            if (customEvent == null) {
+                throw new IllegalArgumentException(
+                        "수동 일정 블록은 CustomEvent가 필요합니다."
+                );
+            }
+
+            if (!allocation.getUser().getId()
+                    .equals(customEvent.getUser().getId())) {
+                throw new IllegalArgumentException(
+                        "수동 타임블록의 할당과 커스텀 이벤트는 동일한 사용자의 데이터여야 합니다."
+                );
+            }
+
+            return;
         }
 
-        if (source != TimeBlockSource.MANUAL && customEvent != null) {
+        if (customEvent != null) {
             throw new IllegalArgumentException(
                     "자동 또는 근무 블록은 CustomEvent를 가질 수 없습니다."
             );
