@@ -1,6 +1,7 @@
 package org.example.nura.domain.user.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.user.dto.request.OnboardingRequest;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "회원", description = "회원가입, 로그인, 온보딩 API")
 @RestController
 @RequestMapping("/api/me/preferences")
 @RequiredArgsConstructor
