@@ -2,6 +2,7 @@ package org.example.nura.global.infra.fastapi;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.skin.dto.response.FastApiOcrResponse;
+import org.example.nura.domain.skin.dto.response.FastApiSkinAnalysisResponse;
 import org.example.nura.domain.skin.entity.enums.CosmeticType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -43,4 +44,24 @@ public class FastApiClient {
             );
         }
     }
+
+    /**
+     * FastAPI 서버에 피부 사진 S3 URL을 보내 피부 상태 분석 요청
+     */
+    public FastApiSkinAnalysisResponse analyzeSkin(String photoUrl) {
+        try {
+            return restClient.post()
+                    .uri("/api/v1/skin/analyze")
+                    .body(Map.of("photo_url", photoUrl))
+                    .retrieve()
+                    .body(FastApiSkinAnalysisResponse.class);
+        } catch (Exception e) {
+            log.error("FastAPI 피부 분석 호출 실패: {}", e.getMessage());
+            // FastAPI 미기동 시 백엔드가 안 터지도록 기본 폴백 값 제공
+            return new FastApiSkinAnalysisResponse(30, 2);
+        }
+    }
+
+
+
 }
