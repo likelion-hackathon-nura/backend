@@ -79,7 +79,7 @@ public class SkinRoutineService {
         Checkin checkin = routine.getCheckin();
 
         List<RegisteredCosmetic> cosmetics =
-                registeredCosmeticRepository.findAllByUserId(userId);
+                registeredCosmeticRepository.findByUserId(userId);
 
         if (cosmetics.isEmpty()) {
             throw new BaseException(

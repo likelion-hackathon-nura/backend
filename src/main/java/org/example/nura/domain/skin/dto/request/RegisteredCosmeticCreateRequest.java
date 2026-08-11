@@ -6,8 +6,8 @@ public record RegisteredCosmeticCreateRequest(
         String cosmeticBrand,
         String cosmeticName,
         CosmeticType cosmeticType,
-        String cosmeticIngredient,
-        String cosmeticCoreIngredient,
+        String cosmeticIngredients,
+        String coreIngredients,
         String cosmeticUrl
 ) {
 }
