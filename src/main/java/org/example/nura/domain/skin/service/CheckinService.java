@@ -15,25 +15,29 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
-import org.example.nura.global.infra.s3.S3Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
+// 클래스 레벨의 @Transactional(readOnly = true) 제거!
 public class CheckinService {
 
     private final UserRepository userRepository;
     private final CheckinRepository checkinRepository;
     private final SkinRoutineRepository skinRoutineRepository;
     private final SkinAnalysisService skinAnalysisService;
-    private final S3Service s3Service;
+    private final TransactionTemplate transactionTemplate;
 
+    /**
+     * 단순 상태 조회 (읽기 전용 트랜잭션 개별 적용)
+     */
+    @Transactional(readOnly = true)
     public CheckinStatusResponse getStatus(
             Long userId,
             LocalDate date
@@ -64,7 +68,7 @@ public class CheckinService {
     }
 
     /**
-     * 체크인 생성 (S3 및 AI 호출은 DB 트랜잭션 바깥에서 수행)
+     * 체크인 생성 (메서드 전체에는 트랜잭션이 없음 -> AI 통신 시 DB 커넥션 안 잡음)
      */
     public CheckinResponse create(
             Long userId,
@@ -75,7 +79,7 @@ public class CheckinService {
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
 
-        // 1. 애플리케이션 1차 중복 검사
+        // 1. 애플리케이션 1차 중복 검사 (단순 조회)
         if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
             throw new BaseException(
                     ErrorCode.DUPLICATE_RESOURCE,
@@ -86,10 +90,10 @@ public class CheckinService {
         int tightnessScore = request.tightness().toScore();
         int rednessScore = request.redness().toScore();
 
-        // 2. S3 업로드 (DB 트랜잭션 밖에서 실행)
+        // 2. S3 업로드 (DB 트랜잭션 밖)
         String photoUrl = uploadPhotoIfPresent(request.photo());
 
-        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 커넥션 점유 안 함!)
+        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 외부 통신 중 Connection 점유 없음!)
         SkinAnalysisService.AnalysisResult analysisResult =
                 skinAnalysisService.analyze(
                         request.photo(),
@@ -98,15 +102,13 @@ public class CheckinService {
                         rednessScore
                 );
 
-        // 4. DB 저장은 짧은 트랜잭션 안에서 일괄 처리
-        return saveCheckinTransaction(user, request, tightnessScore, rednessScore, photoUrl, analysisResult);
+        // 4. DB 저장은 TransactionTemplate을 통해 '순수 쓰기 트랜잭션'으로만 실행
+        return transactionTemplate.execute(status ->
+                saveCheckinLogic(user, request, tightnessScore, rednessScore, photoUrl, analysisResult)
+        );
     }
 
-    /**
-     * DB 저장 전용 단기 트랜잭션
-     */
-    @Transactional
-    public CheckinResponse saveCheckinTransaction(
+    private CheckinResponse saveCheckinLogic(
             User user,
             CheckinCreateRequest request,
             int tightnessScore,
@@ -164,7 +166,6 @@ public class CheckinService {
                     savedCheckin.getCreatedAt()
             );
         } catch (DataIntegrityViolationException e) {
-            // 동시 연타로 인한 DB 복합 유니크 제약 위반 예외 처리
             throw new BaseException(
                     ErrorCode.DUPLICATE_RESOURCE,
                     "해당 날짜의 체크인은 이미 존재합니다."
@@ -192,7 +193,7 @@ public class CheckinService {
         if (photo == null || photo.isEmpty()) {
             return null;
         }
-        return s3Service.upload(photo, "checkin");
+        return null;
     }
 
     private SkinAnalysisLevel defaultUnknown(
