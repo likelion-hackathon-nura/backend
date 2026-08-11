@@ -1,0 +1,203 @@
+package org.example.nura.domain.skin.service;
+
+import lombok.RequiredArgsConstructor;
+import org.example.nura.domain.skin.dto.request.CheckinCreateRequest;
+import org.example.nura.domain.skin.dto.response.CheckinResponse;
+import org.example.nura.domain.skin.dto.response.CheckinStatusResponse;
+import org.example.nura.domain.skin.entity.Checkin;
+import org.example.nura.domain.skin.entity.SkinRoutine;
+import org.example.nura.domain.skin.entity.enums.CheckinSkinLevel;
+import org.example.nura.domain.skin.entity.enums.RecoveryLevel;
+import org.example.nura.domain.skin.entity.enums.SkinAnalysisLevel;
+import org.example.nura.domain.skin.repository.CheckinRepository;
+import org.example.nura.domain.skin.repository.SkinRoutineRepository;
+import org.example.nura.domain.user.entity.User;
+import org.example.nura.domain.user.repository.UserRepository;
+import org.example.nura.global.error.ErrorCode;
+import org.example.nura.global.error.exception.BaseException;
+import org.example.nura.global.infra.s3.S3Service;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDate;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class CheckinService {
+
+    private final UserRepository userRepository;
+    private final CheckinRepository checkinRepository;
+    private final SkinRoutineRepository skinRoutineRepository;
+    private final SkinAnalysisService skinAnalysisService;
+    private final S3Service s3Service;
+
+    public CheckinStatusResponse getStatus(
+            Long userId,
+            LocalDate date
+    ) {
+        LocalDate targetDate = date == null ? LocalDate.now() : date;
+
+        Checkin existing = checkinRepository.findByUserIdAndDate(
+                        userId,
+                        targetDate
+                )
+                .orElse(null);
+
+        if (existing == null) {
+            return new CheckinStatusResponse(
+                    targetDate,
+                    true,
+                    null,
+                    null
+            );
+        }
+
+        return new CheckinStatusResponse(
+                targetDate,
+                false,
+                "ALREADY_CHECKED_IN",
+                existing.getId()
+        );
+    }
+
+    /**
+     * 체크인 생성 (S3 및 AI 호출은 DB 트랜잭션 바깥에서 수행)
+     */
+    public CheckinResponse create(
+            Long userId,
+            CheckinCreateRequest request
+    ) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
+                );
+
+        // 1. 애플리케이션 1차 중복 검사
+        if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
+            throw new BaseException(
+                    ErrorCode.DUPLICATE_RESOURCE,
+                    "해당 날짜의 체크인은 이미 존재합니다."
+            );
+        }
+
+        int tightnessScore = request.tightness().toScore();
+        int rednessScore = request.redness().toScore();
+
+        // 2. S3 업로드 (DB 트랜잭션 밖에서 실행)
+        String photoUrl = uploadPhotoIfPresent(request.photo());
+
+        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 커넥션 점유 안 함!)
+        SkinAnalysisService.AnalysisResult analysisResult =
+                skinAnalysisService.analyze(
+                        request.photo(),
+                        request.fatigue(),
+                        tightnessScore,
+                        rednessScore
+                );
+
+        // 4. DB 저장은 짧은 트랜잭션 안에서 일괄 처리
+        return saveCheckinTransaction(user, request, tightnessScore, rednessScore, photoUrl, analysisResult);
+    }
+
+    /**
+     * DB 저장 전용 단기 트랜잭션
+     */
+    @Transactional
+    public CheckinResponse saveCheckinTransaction(
+            User user,
+            CheckinCreateRequest request,
+            int tightnessScore,
+            int rednessScore,
+            String photoUrl,
+            SkinAnalysisService.AnalysisResult analysisResult
+    ) {
+        try {
+            Checkin checkin = Checkin.create(
+                    user,
+                    request.date(),
+                    request.fatigue(),
+                    tightnessScore,
+                    rednessScore,
+                    photoUrl
+            );
+
+            checkin.updateAnalysis(
+                    analysisResult.analyzedRedness(),
+                    analysisResult.analyzedMoisture(),
+                    analysisResult.analyzedOiliness(),
+                    analysisResult.analyzedTrouble(),
+                    analysisResult.aiComment()
+            );
+
+            Checkin savedCheckin = checkinRepository.save(checkin);
+
+            RecoveryLevel recoveryLevel = deriveRecoveryLevel(
+                    request.fatigue(),
+                    tightnessScore,
+                    rednessScore
+            );
+
+            SkinRoutine skinRoutine = SkinRoutine.create(
+                    savedCheckin,
+                    recoveryLevel
+            );
+
+            skinRoutineRepository.save(skinRoutine);
+
+            return new CheckinResponse(
+                    savedCheckin.getId(),
+                    user.getId(),
+                    savedCheckin.getDate(),
+                    savedCheckin.getFatigue(),
+                    CheckinSkinLevel.fromScore(savedCheckin.getTightness()),
+                    CheckinSkinLevel.fromScore(savedCheckin.getRedness()),
+                    recoveryLevel,
+                    defaultUnknown(savedCheckin.getAnalyzedRedness()),
+                    defaultUnknown(savedCheckin.getAnalyzedMoisture()),
+                    defaultUnknown(savedCheckin.getAnalyzedOiliness()),
+                    defaultUnknown(savedCheckin.getAnalyzedTrouble()),
+                    savedCheckin.getAiComment(),
+                    savedCheckin.getPhotoUrl(),
+                    savedCheckin.getCreatedAt()
+            );
+        } catch (DataIntegrityViolationException e) {
+            // 동시 연타로 인한 DB 복합 유니크 제약 위반 예외 처리
+            throw new BaseException(
+                    ErrorCode.DUPLICATE_RESOURCE,
+                    "해당 날짜의 체크인은 이미 존재합니다."
+            );
+        }
+    }
+
+    private RecoveryLevel deriveRecoveryLevel(
+            int fatigue,
+            int tightnessScore,
+            int rednessScore
+    ) {
+        int total = fatigue + tightnessScore + rednessScore;
+
+        if (total <= 5) {
+            return RecoveryLevel.LEVEL_3;
+        } else if (total <= 9) {
+            return RecoveryLevel.LEVEL_2;
+        } else {
+            return RecoveryLevel.LEVEL_1;
+        }
+    }
+
+    private String uploadPhotoIfPresent(MultipartFile photo) {
+        if (photo == null || photo.isEmpty()) {
+            return null;
+        }
+        return s3Service.upload(photo, "checkin");
+    }
+
+    private SkinAnalysisLevel defaultUnknown(
+            SkinAnalysisLevel value
+    ) {
+        return value == null ? SkinAnalysisLevel.UNKNOWN : value;
+    }
+}
