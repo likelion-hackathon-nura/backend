@@ -28,3 +28,48 @@ docker compose -f docker-compose.local.yml up -d
 ## Swagger
 
 http://localhost:8080/swagger-ui.html
+
+## Checkin API (Sync)
+
+- Status: `GET /api/v1/checkin/status?date=2026-08-10`
+- Create: `POST /api/v1/checkin` (multipart/form-data)
+
+### Required Env
+
+```bash
+export AI_FASTAPI_BASE_URL="http://localhost:8000"
+export OPENAI_API_KEY="<your-openai-key>"
+export OPENAI_MODEL="gpt-4o-mini"
+```
+
+`OPENAI_API_KEY` is optional in local development. If empty, fallback comment is used.
+
+### Curl - Checkin Status
+
+```bash
+curl -X GET "http://localhost:8080/api/v1/checkin/status?date=2026-08-10" \
+  -H "Authorization: Bearer <access-token>"
+```
+
+### Curl - Create Checkin (without photo)
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/checkin" \
+  -H "Authorization: Bearer <access-token>" \
+  -F "date=2026-08-10" \
+  -F "fatigue=4" \
+  -F "tightness=HIGH" \
+  -F "redness=MODERATE"
+```
+
+### Curl - Create Checkin (with photo)
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/checkin" \
+  -H "Authorization: Bearer <access-token>" \
+  -F "date=2026-08-10" \
+  -F "fatigue=4" \
+  -F "tightness=HIGH" \
+  -F "redness=MODERATE" \
+  -F "photo=@./sample-face.jpg"
+```
