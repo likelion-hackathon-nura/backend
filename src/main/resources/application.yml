@@ -6,6 +6,16 @@ spring:
     time-zone: Asia/Seoul
     default-property-inclusion: non_null
 
+  cloud:
+    aws:
+      credentials:
+        access-key: ${AWS_ACCESS_KEY:test-access-key}
+        secret-key: ${AWS_SECRET_KEY:test-secret-key}
+      region:
+        static: ${AWS_REGION:ap-northeast-2}
+      s3:
+        bucket: ${AWS_S3_BUCKET:my-nura-bucket}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
