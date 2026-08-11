@@ -35,3 +35,12 @@ logging:
   level:
     root: info
     org.hibernate.SQL: warn
+
+ai:
+  fastapi:
+    base-url: ${AI_FASTAPI_BASE_URL}
+  openai:
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    api-key: ${OPENAI_API_KEY}
+    model: ${OPENAI_MODEL:gpt-4o-mini}
+
