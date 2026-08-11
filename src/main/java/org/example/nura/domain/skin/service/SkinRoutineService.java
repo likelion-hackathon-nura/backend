@@ -2,7 +2,9 @@ package org.example.nura.domain.skin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.skin.dto.response.SkinRoutineResponse;
 import org.example.nura.domain.skin.dto.response.SkinRoutineStepResponse;
 import org.example.nura.domain.skin.entity.Checkin;
@@ -20,15 +22,18 @@ import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -49,7 +54,26 @@ public class SkinRoutineService {
     @Value("${ai.openai.model:gpt-4o-mini}")
     private String openAiModel;
 
-    @Transactional
+    private RestClient openAiClient;
+
+    /**
+     * 타임아웃을 설정한 RestClient 1회 생성
+     */
+    @PostConstruct
+    public void init() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+
+        this.openAiClient = RestClient.builder()
+                .baseUrl(openAiBaseUrl)
+                .requestFactory(requestFactory)
+                .build();
+    }
+
+    /**
+     * 오늘 루틴 생성 (외부 AI 호출 시 DB 트랜잭션을 잡고 있지 않도록 비트랜잭션으로 처리)
+     */
     public SkinRoutineResponse generateTodayRoutine(Long userId) {
         SkinRoutine routine = findTodayRoutineEntity(userId);
         Checkin checkin = routine.getCheckin();
@@ -64,13 +88,12 @@ public class SkinRoutineService {
             );
         }
 
-        routineStepRepository.deleteAllByRoutineId(routine.getId());
-
         int stepCount = resolveStepCount(routine.getRecoveryLevel());
         List<SkinCareType> careTypes = suggestCareTypes(checkin, stepCount);
 
-        List<RoutineStep> steps = new ArrayList<>();
+        List<StepSaveDto> stepDtos = new ArrayList<>();
 
+        // 1. 외부 AI API 호출 (DB 트랜잭션 바깥)
         for (int i = 0; i < stepCount; i++) {
             int stepOrder = i + 1;
             SkinCareType careType = careTypes.get(i);
@@ -83,20 +106,36 @@ public class SkinRoutineService {
                     stepOrder
             );
 
-            steps.add(
-                    RoutineStep.create(
-                            routine,
-                            cosmetic,
-                            stepOrder,
-                            careType,
-                            content.title(),
-                            content.description(),
-                            content.precautions(),
-                            content.recommendedIngredients(),
-                            content.reason()
-                    )
-            );
+            stepDtos.add(new StepSaveDto(stepOrder, careType, cosmetic, content));
         }
+
+        // 2. DB 저장은 짧은 트랜잭션 안에서 수행
+        return saveRoutineStepsTransaction(routine, stepDtos);
+    }
+
+    /**
+     * DB 저장 및 기존 스텝 갱신 전용 단기 트랜잭션
+     */
+    @Transactional
+    public SkinRoutineResponse saveRoutineStepsTransaction(
+            SkinRoutine routine,
+            List<StepSaveDto> stepDtos
+    ) {
+        routineStepRepository.deleteAllByRoutineId(routine.getId());
+
+        List<RoutineStep> steps = stepDtos.stream()
+                .map(dto -> RoutineStep.create(
+                        routine,
+                        dto.cosmetic(),
+                        dto.stepOrder(),
+                        dto.careType(),
+                        dto.content().title(),
+                        dto.content().description(),
+                        dto.content().precautions(),
+                        dto.content().recommendedIngredients(),
+                        dto.content().reason()
+                ))
+                .toList();
 
         routineStepRepository.saveAll(steps);
 
@@ -214,15 +253,15 @@ public class SkinRoutineService {
 
         try {
             String prompt = "다음 정보를 기반으로 3분 회복 루틴의 한 단계를 JSON으로 작성하세요."
-                    + "\\n반환 형식: {\"title\":\"...\",\"description\":\"...\",\"precautions\":\"...\",\"recommended_ingredients\":\"...\",\"reason\":\"...\"}"
-                    + "\\n- step_order: " + stepOrder
-                    + "\\n- care_type: " + careType
-                    + "\\n- cosmetic_name: " + cosmetic.getCosmeticName()
-                    + "\\n- cosmetic_type: " + cosmetic.getCosmeticType()
-                    + "\\n- acne_level: " + safeLevel(checkin.getAnalyzedTrouble())
-                    + "\\n- redness_level: " + safeLevel(checkin.getAnalyzedRedness())
-                    + "\\n- moisture_level: " + safeLevel(checkin.getAnalyzedMoisture())
-                    + "\\n- oiliness_level: " + safeLevel(checkin.getAnalyzedOiliness());
+                    + "\n반환 형식: {\"title\":\"...\",\"description\":\"...\",\"precautions\":\"...\",\"recommended_ingredients\":\"...\",\"reason\":\"...\"}"
+                    + "\n- step_order: " + stepOrder
+                    + "\n- care_type: " + careType
+                    + "\n- cosmetic_name: " + cosmetic.getCosmeticName()
+                    + "\n- cosmetic_type: " + cosmetic.getCosmeticType()
+                    + "\n- acne_level: " + safeLevel(checkin.getAnalyzedTrouble())
+                    + "\n- redness_level: " + safeLevel(checkin.getAnalyzedRedness())
+                    + "\n- moisture_level: " + safeLevel(checkin.getAnalyzedMoisture())
+                    + "\n- oiliness_level: " + safeLevel(checkin.getAnalyzedOiliness());
 
             Map<String, Object> payload = Map.of(
                     "model", openAiModel,
@@ -233,10 +272,7 @@ public class SkinRoutineService {
                     )
             );
 
-            String responseBody = RestClient.builder()
-                    .baseUrl(openAiBaseUrl)
-                    .build()
-                    .post()
+            String responseBody = openAiClient.post()
                     .uri("/chat/completions")
                     .header("Authorization", "Bearer " + openAiApiKey)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -270,6 +306,7 @@ public class SkinRoutineService {
                     readOrDefault(contentJson, "reason", fallbackReason(careType))
             );
         } catch (Exception e) {
+            log.warn("[SkinRoutine] OpenAI 루틴 스텝 생성 실패: {}", e.getMessage());
             return fallbackStepContent(careType, cosmetic, stepOrder);
         }
     }
@@ -367,5 +404,12 @@ public class SkinRoutineService {
             String reason
     ) {
     }
-}
 
+    private record StepSaveDto(
+            int stepOrder,
+            SkinCareType careType,
+            RegisteredCosmetic cosmetic,
+            LlmStepContent content
+    ) {
+    }
+}

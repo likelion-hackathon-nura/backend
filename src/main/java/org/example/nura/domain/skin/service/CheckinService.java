@@ -15,12 +15,13 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
+import org.example.nura.global.infra.s3.S3Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +32,7 @@ public class CheckinService {
     private final CheckinRepository checkinRepository;
     private final SkinRoutineRepository skinRoutineRepository;
     private final SkinAnalysisService skinAnalysisService;
+    private final S3Service s3Service;
 
     public CheckinStatusResponse getStatus(
             Long userId,
@@ -61,7 +63,9 @@ public class CheckinService {
         );
     }
 
-    @Transactional
+    /**
+     * 체크인 생성 (S3 및 AI 호출은 DB 트랜잭션 바깥에서 수행)
+     */
     public CheckinResponse create(
             Long userId,
             CheckinCreateRequest request
@@ -71,10 +75,8 @@ public class CheckinService {
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
 
-        if (checkinRepository.existsByUserIdAndDate(
-                userId,
-                request.date()
-        )) {
+        // 1. 애플리케이션 1차 중복 검사
+        if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
             throw new BaseException(
                     ErrorCode.DUPLICATE_RESOURCE,
                     "해당 날짜의 체크인은 이미 존재합니다."
@@ -84,30 +86,10 @@ public class CheckinService {
         int tightnessScore = request.tightness().toScore();
         int rednessScore = request.redness().toScore();
 
-        Checkin checkin = Checkin.create(
-                user,
-                request.date(),
-                request.fatigue(),
-                tightnessScore,
-                rednessScore,
-                buildTemporaryPhotoUrl(request.photo())
-        );
+        // 2. S3 업로드 (DB 트랜잭션 밖에서 실행)
+        String photoUrl = uploadPhotoIfPresent(request.photo());
 
-        Checkin savedCheckin = checkinRepository.save(checkin);
-
-        RecoveryLevel recoveryLevel = deriveRecoveryLevel(
-                request.fatigue(),
-                tightnessScore,
-                rednessScore
-        );
-
-        SkinRoutine skinRoutine = SkinRoutine.create(
-                savedCheckin,
-                recoveryLevel
-        );
-
-        skinRoutineRepository.save(skinRoutine);
-
+        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 커넥션 점유 안 함!)
         SkinAnalysisService.AnalysisResult analysisResult =
                 skinAnalysisService.analyze(
                         request.photo(),
@@ -116,39 +98,80 @@ public class CheckinService {
                         rednessScore
                 );
 
-        savedCheckin.updateAnalysis(
-                analysisResult.analyzedRedness(),
-                analysisResult.analyzedMoisture(),
-                analysisResult.analyzedOiliness(),
-                analysisResult.analyzedTrouble(),
-                analysisResult.aiComment()
-        );
-
-        return new CheckinResponse(
-                savedCheckin.getId(),
-                user.getId(),
-                savedCheckin.getDate(),
-                savedCheckin.getFatigue(),
-                CheckinSkinLevel.fromScore(savedCheckin.getTightness()),
-                CheckinSkinLevel.fromScore(savedCheckin.getRedness()),
-                recoveryLevel,
-                defaultUnknown(savedCheckin.getAnalyzedRedness()),
-                defaultUnknown(savedCheckin.getAnalyzedMoisture()),
-                defaultUnknown(savedCheckin.getAnalyzedOiliness()),
-                defaultUnknown(savedCheckin.getAnalyzedTrouble()),
-                savedCheckin.getAiComment(),
-                savedCheckin.getPhotoUrl(),
-                savedCheckin.getCreatedAt()
-        );
+        // 4. DB 저장은 짧은 트랜잭션 안에서 일괄 처리
+        return saveCheckinTransaction(user, request, tightnessScore, rednessScore, photoUrl, analysisResult);
     }
 
     /**
-     * 피로도(1~5) + 피부당김(1~4) + 붉은기(1~4) 합산으로 회복 단계를 결정합니다.
-     * 점수가 낮을수록 피부 상태가 좋아 더 많은 단계를 수행합니다.
-     * - 합계 ≤ 5  → LEVEL_3 (상태 양호, 풀 루틴)
-     * - 합계 ≤ 9  → LEVEL_2
-     * - 합계 > 9  → LEVEL_1 (상태 나쁨, 짧은 루틴)
+     * DB 저장 전용 단기 트랜잭션
      */
+    @Transactional
+    public CheckinResponse saveCheckinTransaction(
+            User user,
+            CheckinCreateRequest request,
+            int tightnessScore,
+            int rednessScore,
+            String photoUrl,
+            SkinAnalysisService.AnalysisResult analysisResult
+    ) {
+        try {
+            Checkin checkin = Checkin.create(
+                    user,
+                    request.date(),
+                    request.fatigue(),
+                    tightnessScore,
+                    rednessScore,
+                    photoUrl
+            );
+
+            checkin.updateAnalysis(
+                    analysisResult.analyzedRedness(),
+                    analysisResult.analyzedMoisture(),
+                    analysisResult.analyzedOiliness(),
+                    analysisResult.analyzedTrouble(),
+                    analysisResult.aiComment()
+            );
+
+            Checkin savedCheckin = checkinRepository.save(checkin);
+
+            RecoveryLevel recoveryLevel = deriveRecoveryLevel(
+                    request.fatigue(),
+                    tightnessScore,
+                    rednessScore
+            );
+
+            SkinRoutine skinRoutine = SkinRoutine.create(
+                    savedCheckin,
+                    recoveryLevel
+            );
+
+            skinRoutineRepository.save(skinRoutine);
+
+            return new CheckinResponse(
+                    savedCheckin.getId(),
+                    user.getId(),
+                    savedCheckin.getDate(),
+                    savedCheckin.getFatigue(),
+                    CheckinSkinLevel.fromScore(savedCheckin.getTightness()),
+                    CheckinSkinLevel.fromScore(savedCheckin.getRedness()),
+                    recoveryLevel,
+                    defaultUnknown(savedCheckin.getAnalyzedRedness()),
+                    defaultUnknown(savedCheckin.getAnalyzedMoisture()),
+                    defaultUnknown(savedCheckin.getAnalyzedOiliness()),
+                    defaultUnknown(savedCheckin.getAnalyzedTrouble()),
+                    savedCheckin.getAiComment(),
+                    savedCheckin.getPhotoUrl(),
+                    savedCheckin.getCreatedAt()
+            );
+        } catch (DataIntegrityViolationException e) {
+            // 동시 연타로 인한 DB 복합 유니크 제약 위반 예외 처리
+            throw new BaseException(
+                    ErrorCode.DUPLICATE_RESOURCE,
+                    "해당 날짜의 체크인은 이미 존재합니다."
+            );
+        }
+    }
+
     private RecoveryLevel deriveRecoveryLevel(
             int fatigue,
             int tightnessScore,
@@ -165,20 +188,11 @@ public class CheckinService {
         }
     }
 
-    private String buildTemporaryPhotoUrl(MultipartFile photo) {
+    private String uploadPhotoIfPresent(MultipartFile photo) {
         if (photo == null || photo.isEmpty()) {
             return null;
         }
-
-        String originalFilename = photo.getOriginalFilename();
-        String safeFilename =
-                originalFilename == null
-                        ? "image"
-                        : originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
-
-        // TODO: AI 연동 및 실제 파일 저장 연동 전까지 임시 URL 포맷만 유지합니다.
-        return "pending://ai-analysis/" + LocalDate.now() + "/"
-                + UUID.randomUUID() + "-" + safeFilename;
+        return s3Service.upload(photo, "checkin");
     }
 
     private SkinAnalysisLevel defaultUnknown(
@@ -187,4 +201,3 @@ public class CheckinService {
         return value == null ? SkinAnalysisLevel.UNKNOWN : value;
     }
 }
-

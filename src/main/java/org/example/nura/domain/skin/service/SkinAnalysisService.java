@@ -2,10 +2,13 @@ package org.example.nura.domain.skin.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.skin.entity.enums.SkinAnalysisLevel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -13,9 +16,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class SkinAnalysisService {
 
@@ -32,6 +37,29 @@ public class SkinAnalysisService {
 
     @Value("${ai.openai.model:gpt-4o-mini}")
     private String openAiModel;
+
+    private RestClient fastApiClient;
+    private RestClient openAiClient;
+
+    /**
+     * 의존성 주입 후 RestClient를 타임아웃 설정과 함께 1회만 초기화하여 재사용
+     */
+    @PostConstruct
+    public void init() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+
+        this.fastApiClient = RestClient.builder()
+                .baseUrl(fastApiBaseUrl)
+                .requestFactory(requestFactory)
+                .build();
+
+        this.openAiClient = RestClient.builder()
+                .baseUrl(openAiBaseUrl)
+                .requestFactory(requestFactory)
+                .build();
+    }
 
     public AnalysisResult analyze(
             MultipartFile photo,
@@ -81,10 +109,7 @@ public class SkinAnalysisService {
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             body.add("photo", asByteArrayResource(photo));
 
-            String responseBody = RestClient.builder()
-                    .baseUrl(fastApiBaseUrl)
-                    .build()
-                    .post()
+            String responseBody = fastApiClient.post()
                     .uri("/analyze")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(body)
@@ -104,6 +129,7 @@ public class SkinAnalysisService {
                     readNullableInt(root, "oiliness_score")
             );
         } catch (Exception e) {
+            log.warn("[SkinAnalysis] FastAPI 정량 분석 호출 실패: {}", e.getMessage());
             return QuantitativeMetrics.empty();
         }
     }
@@ -152,10 +178,7 @@ public class SkinAnalysisService {
                     )
             );
 
-            String responseBody = RestClient.builder()
-                    .baseUrl(openAiBaseUrl)
-                    .build()
-                    .post()
+            String responseBody = openAiClient.post()
                     .uri("/chat/completions")
                     .header("Authorization", "Bearer " + openAiApiKey)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -199,6 +222,7 @@ public class SkinAnalysisService {
 
             return comment;
         } catch (Exception e) {
+            log.warn("[SkinAnalysis] OpenAI API 코멘트 생성 호출 실패: {}", e.getMessage());
             return fallbackComment(
                     analyzedRedness,
                     analyzedMoisture,
@@ -297,5 +321,3 @@ public class SkinAnalysisService {
         }
     }
 }
-
-
