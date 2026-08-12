@@ -15,7 +15,6 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
-import org.example.nura.global.infra.s3.S3Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,7 +31,6 @@ public class CheckinService {
     private final CheckinRepository checkinRepository;
     private final SkinRoutineRepository skinRoutineRepository;
     private final SkinAnalysisService skinAnalysisService;
-    private final S3Service s3Service;
 
     public CheckinStatusResponse getStatus(
             Long userId,
@@ -87,7 +85,6 @@ public class CheckinService {
         int rednessScore = request.redness().toScore();
 
         // 2. S3 업로드 (DB 트랜잭션 밖에서 실행)
-        String photoUrl = uploadPhotoIfPresent(request.photo());
 
         // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 커넥션 점유 안 함!)
         SkinAnalysisService.AnalysisResult analysisResult =
@@ -99,7 +96,7 @@ public class CheckinService {
                 );
 
         // 4. DB 저장은 짧은 트랜잭션 안에서 일괄 처리
-        return saveCheckinTransaction(user, request, tightnessScore, rednessScore, photoUrl, analysisResult);
+        return saveCheckinTransaction(user, request, tightnessScore, rednessScore, analysisResult);
     }
 
     /**
@@ -111,7 +108,6 @@ public class CheckinService {
             CheckinCreateRequest request,
             int tightnessScore,
             int rednessScore,
-            String photoUrl,
             SkinAnalysisService.AnalysisResult analysisResult
     ) {
         try {
@@ -120,8 +116,7 @@ public class CheckinService {
                     request.date(),
                     request.fatigue(),
                     tightnessScore,
-                    rednessScore,
-                    photoUrl
+                    rednessScore
             );
 
             checkin.updateAnalysis(
@@ -160,7 +155,6 @@ public class CheckinService {
                     defaultUnknown(savedCheckin.getAnalyzedOiliness()),
                     defaultUnknown(savedCheckin.getAnalyzedTrouble()),
                     savedCheckin.getAiComment(),
-                    savedCheckin.getPhotoUrl(),
                     savedCheckin.getCreatedAt()
             );
         } catch (DataIntegrityViolationException e) {
@@ -186,13 +180,6 @@ public class CheckinService {
         } else {
             return RecoveryLevel.LEVEL_1;
         }
-    }
-
-    private String uploadPhotoIfPresent(MultipartFile photo) {
-        if (photo == null || photo.isEmpty()) {
-            return null;
-        }
-        return s3Service.upload(photo, "checkin");
     }
 
     private SkinAnalysisLevel defaultUnknown(

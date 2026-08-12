@@ -1,7 +1,7 @@
 package org.example.nura.domain.user.service;
 
 import lombok.RequiredArgsConstructor;
-import org.example.nura.domain.user.dto.request.OnboardingRequest;
+import org.example.nura.domain.user.dto.request.UserPreferencesUpdateRequest;
 import org.example.nura.domain.user.dto.response.UserPreferencesResponse;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.entity.UserRestActivity;
@@ -30,7 +30,7 @@ public class UserPreferenceService {
 
     public UserPreferencesResponse getPreferences(Long userId) {
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() ->
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
@@ -49,12 +49,6 @@ public class UserPreferenceService {
                 );
 
         return new UserPreferencesResponse(
-                user.getShiftDStart(),
-                user.getShiftDEnd(),
-                user.getShiftEStart(),
-                user.getShiftEEnd(),
-                user.getShiftNStart(),
-                user.getShiftNEnd(),
                 user.getTargetSleepMinutes(),
                 user.getMealPattern(),
 
@@ -74,7 +68,7 @@ public class UserPreferenceService {
     @Transactional
     public void updatePreferences(
             Long userId,
-            OnboardingRequest request
+            UserPreferencesUpdateRequest request
     ) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() ->
@@ -87,15 +81,6 @@ public class UserPreferenceService {
                 );
 
         validateRequest(request);
-
-        user.updateShiftTimes(
-                request.shiftDStart(),
-                request.shiftDEnd(),
-                request.shiftEStart(),
-                request.shiftEEnd(),
-                request.shiftNStart(),
-                request.shiftNEnd()
-        );
 
         user.updatePreferences(
                 request.targetSleepMinutes(),
@@ -134,7 +119,7 @@ public class UserPreferenceService {
         userSkinConcernRepository.saveAll(skinConcerns);
     }
 
-    private void validateRequest(OnboardingRequest request) {
+    private void validateRequest(UserPreferencesUpdateRequest request) {
 
         if (request.restActivities().stream().distinct().count()
                 != request.restActivities().size()) {

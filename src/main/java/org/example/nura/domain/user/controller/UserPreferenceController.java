@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.example.nura.domain.user.dto.request.OnboardingRequest;
+import org.example.nura.domain.user.dto.request.UserPreferencesUpdateRequest;
 import org.example.nura.domain.user.dto.response.UserPreferencesResponse;
 import org.example.nura.domain.user.service.UserPreferenceService;
 import org.example.nura.global.common.ApiResponse;
@@ -38,7 +38,7 @@ public class UserPreferenceController {
     @Operation(summary = "온보딩 수정", description = "사용자의 온보딩 정보를 수정합니다.")
     public ApiResponse<Void> updatePreferences(
             @AuthenticationPrincipal Long userId,
-            @Valid @RequestBody OnboardingRequest request
+            @Valid @RequestBody UserPreferencesUpdateRequest request
     ) {
         userPreferenceService.updatePreferences(
                 userId,
