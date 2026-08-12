@@ -5,15 +5,18 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleSaveRequest;
+import org.example.nura.domain.schedule.dto.response.DutyScheduleOcrResponse;
 import org.example.nura.domain.schedule.dto.response.DutyScheduleWeeklyResponse;
 import org.example.nura.domain.schedule.service.DutyScheduleService;
 import org.example.nura.global.common.ApiResponse;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 
-@Tag(name = "근무표", description = "근무표 조회 및 등록/수정 API")
+@Tag(name = "근무표 관리", description = "근무표 조회 및 등록/수정 API")
 @RestController
 @RequestMapping("api/schedules")
 @RequiredArgsConstructor
@@ -58,6 +61,30 @@ public class DutyScheduleController {
         return ApiResponse.success(
                 "근무표가 저장되었습니다.",
                 null
+        );
+    }
+
+    @Operation(
+            summary = "근무표 OCR 인식",
+            description = "근무표 이미지를 분석하여 날짜별 근무 형태를 반환합니다."
+    )
+    @PostMapping(
+            value = "/ocr",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<DutyScheduleOcrResponse> recognizeSchedule(
+            @AuthenticationPrincipal Long userId,
+            @RequestPart("image") MultipartFile image
+    ) {
+        DutyScheduleOcrResponse response =
+                dutyScheduleService.recognizeSchedule(
+                        userId,
+                        image
+                );
+
+        return ApiResponse.success(
+                "근무표 인식이 완료되었습니다.",
+                response
         );
     }
 }

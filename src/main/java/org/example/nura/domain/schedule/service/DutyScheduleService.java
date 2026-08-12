@@ -12,8 +12,15 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
+import org.example.nura.global.infra.ocr.ClovaOcrClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import org.example.nura.domain.schedule.dto.response.DutyScheduleOcrItemResponse;
+import org.example.nura.domain.schedule.dto.response.DutyScheduleOcrResponse;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -24,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +42,32 @@ public class DutyScheduleService {
 
     private final DutyScheduleRepository dutyScheduleRepository;
     private final UserRepository userRepository;
+
+    private final DutyScheduleAiService dutyScheduleAiService;
+    private final ClovaOcrClient clovaOcrClient;
+    private final DutyScheduleOcrParser dutyScheduleOcrParser;
+    private final ObjectMapper objectMapper;
+
+    public DutyScheduleOcrResponse recognizeSchedule(
+            Long userId,
+            MultipartFile image
+    ) {
+        String rawJson =
+                clovaOcrClient.analyze(image);
+
+        String structuredText =
+                dutyScheduleOcrParser.extractStructuredText(rawJson);
+
+        String openAiRawResponse =
+                dutyScheduleAiService.parseDutySchedule(
+                        structuredText
+                );
+
+        return parseOpenAiResponse(
+                userId,
+                openAiRawResponse
+        );
+    }
 
     // 근무표 기간 조회
     public DutyScheduleWeeklyResponse getSchedules(
@@ -168,6 +202,138 @@ public class DutyScheduleService {
                     shiftTime.startTime(),
                     shiftTime.endTime(),
                     request.source()
+            );
+        }
+    }
+
+    private DutyScheduleOcrResponse parseOpenAiResponse(
+            Long userId,
+            String rawResponse
+    ) {
+        try {
+            JsonNode root =
+                    objectMapper.readTree(rawResponse);
+
+            JsonNode choices =
+                    root.path("choices");
+
+            if (!choices.isArray()
+                    || choices.isEmpty()) {
+                throw new BaseException(
+                        ErrorCode.INVALID_INPUT_VALUE,
+                        "근무표 분석 결과가 없습니다."
+                );
+            }
+
+            String content =
+                    choices.get(0)
+                            .path("message")
+                            .path("content")
+                            .asText();
+
+            if (content == null
+                    || content.isBlank()) {
+                throw new BaseException(
+                        ErrorCode.INVALID_INPUT_VALUE,
+                        "근무표 분석 결과가 비어 있습니다."
+                );
+            }
+
+            JsonNode contentJson =
+                    objectMapper.readTree(content);
+
+            JsonNode schedulesNode =
+                    contentJson.path("schedules");
+
+            if (!schedulesNode.isArray()) {
+                throw new BaseException(
+                        ErrorCode.INVALID_INPUT_VALUE,
+                        "근무표 분석 결과 형식이 올바르지 않습니다."
+                );
+            }
+
+            LocalDate today =
+                    LocalDate.now(KST);
+
+            List<DutyScheduleOcrItemResponse> schedules =
+                    new ArrayList<>();
+
+            for (JsonNode scheduleNode : schedulesNode) {
+
+                LocalDate date =
+                        LocalDate.parse(
+                                scheduleNode
+                                        .path("date")
+                                        .asText()
+                        );
+
+                ShiftType ocrShiftType =
+                        ShiftType.valueOf(
+                                scheduleNode
+                                        .path("shiftType")
+                                        .asText()
+                        );
+
+                DutySchedule existing =
+                        dutyScheduleRepository
+                                .findByUserIdAndDate(
+                                        userId,
+                                        date
+                                )
+                                .orElse(null);
+
+                ShiftType displayShiftType;
+                boolean editable;
+
+                // 과거
+                if (date.isBefore(today)) {
+
+                    editable = false;
+
+                    displayShiftType =
+                            existing != null
+                                    ? existing.getShiftType()
+                                    : ocrShiftType;
+
+                    // 오늘 + 기존 근무 있음
+                } else if (date.equals(today)
+                        && existing != null) {
+
+                    editable = false;
+
+                    displayShiftType =
+                            existing.getShiftType();
+
+                    // 오늘 미등록 또는 미래
+                } else {
+
+                    editable = true;
+
+                    displayShiftType =
+                            ocrShiftType;
+                }
+
+                schedules.add(
+                        new DutyScheduleOcrItemResponse(
+                                date,
+                                date.getDayOfWeek(),
+                                displayShiftType,
+                                editable
+                        )
+                );
+            }
+
+            return new DutyScheduleOcrResponse(
+                    schedules
+            );
+
+        } catch (BaseException e) {
+            throw e;
+
+        } catch (Exception e) {
+            throw new BaseException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "근무표 분석 결과를 해석할 수 없습니다."
             );
         }
     }
