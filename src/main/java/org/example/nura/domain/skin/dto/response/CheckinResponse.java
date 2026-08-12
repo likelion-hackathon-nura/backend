@@ -42,8 +42,10 @@ public record CheckinResponse(
         @JsonProperty("ai_comment")
         String aiComment,
 
+        @JsonProperty("photo_url")
+        String photoUrl,
+
         @JsonProperty("created_at")
         LocalDateTime createdAt
 ) {
 }
-

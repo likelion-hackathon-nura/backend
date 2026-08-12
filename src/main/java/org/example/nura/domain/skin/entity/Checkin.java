@@ -63,6 +63,9 @@ public class Checkin extends BaseTimeEntity {
     @Column(name = "redness", nullable = false)
     private Integer redness;
 
+    @Column(name = "photo_url", length = 500)
+    private String photoUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "analyzed_redness", length = 10)
     private SkinAnalysisLevel analyzedRedness;
@@ -87,13 +90,15 @@ public class Checkin extends BaseTimeEntity {
             LocalDate date,
             Integer fatigue,
             Integer tightness,
-            Integer redness
+            Integer redness,
+            String photoUrl
     ) {
         this.user = user;
         this.date = date;
         this.fatigue = fatigue;
         this.tightness = tightness;
         this.redness = redness;
+        this.photoUrl = photoUrl;
     }
 
     public static Checkin create(
@@ -101,14 +106,16 @@ public class Checkin extends BaseTimeEntity {
             LocalDate date,
             Integer fatigue,
             Integer tightness,
-            Integer redness
+            Integer redness,
+            String photoUrl
     ) {
         return new Checkin(
                 user,
                 date,
                 fatigue,
                 tightness,
-                redness
+                redness,
+                photoUrl
         );
     }
 
