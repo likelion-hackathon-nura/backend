@@ -30,7 +30,7 @@ public class UserPreferenceService {
 
     public UserPreferencesResponse getPreferences(Long userId) {
 
-        User user = userRepository.findByIdForUpdate(userId)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() ->
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
@@ -70,7 +70,7 @@ public class UserPreferenceService {
             Long userId,
             UserPreferencesUpdateRequest request
     ) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() ->
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );

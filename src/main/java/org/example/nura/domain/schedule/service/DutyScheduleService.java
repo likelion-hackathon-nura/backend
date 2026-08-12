@@ -1,6 +1,8 @@
 package org.example.nura.domain.schedule.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleItemRequest;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleSaveRequest;
 import org.example.nura.domain.schedule.dto.response.DutyScheduleDayResponse;
@@ -34,6 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.ArrayList;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -144,6 +147,26 @@ public class DutyScheduleService {
 
         LocalDate today = LocalDate.now(KST);
 
+        List<LocalDate> dates = request.schedules().stream()
+                .map(DutyScheduleItemRequest::date)
+                .toList();
+
+        LocalDate minDate = dates.stream().min(LocalDate::compareTo).orElseThrow();
+        LocalDate maxDate = dates.stream().max(LocalDate::compareTo).orElseThrow();
+
+        Map<LocalDate, DutySchedule> existingMap =
+                dutyScheduleRepository
+                        .findAllByUserIdAndDateBetweenOrderByDateAsc(
+                                userId, minDate, maxDate
+                        )
+                        .stream()
+                        .collect(Collectors.toMap(
+                                DutySchedule::getDate,
+                                Function.identity()
+                        ));
+
+        List<DutySchedule> toSave = new ArrayList<>();
+
         for (DutyScheduleItemRequest item : request.schedules()) {
 
             LocalDate date = item.date();
@@ -151,60 +174,54 @@ public class DutyScheduleService {
 
             validateDate(date, today);
 
-            DutySchedule existing =
-                    dutyScheduleRepository
-                            .findByUserIdAndDate(
-                                    userId,
-                                    date
-                            )
-                            .orElse(null);
+            DutySchedule existing = existingMap.get(date);
 
             // 오늘 근무는 기존 데이터가 있으면 수정 불가
-            if (date.equals(today)
-                    && existing != null) {
+            if (date.equals(today) && existing != null) {
                 throw new BaseException(
                         ErrorCode.INVALID_INPUT_VALUE,
                         "오늘 등록된 근무는 수정할 수 없습니다."
                 );
             }
 
-            ShiftTime shiftTime =
-                    resolveShiftTime(
-                            user,
-                            shiftType
-                    );
+            ShiftTime shiftTime = resolveShiftTime(user, shiftType);
+            validateShiftTimeConfigured(shiftType, shiftTime);
 
-            validateShiftTimeConfigured(
-                    shiftType,
-                    shiftTime
+            if (existing == null) {
+                toSave.add(DutySchedule.create(
+                        user,
+                        date,
+                        shiftType,
+                        shiftTime.startTime(),
+                        shiftTime.endTime(),
+                        request.source()
+                ));
+            } else {
+                // 미래 날짜 기존 데이터 수정 - OCR로 같은 미래 날짜를 다시 확정해도 새로운 값으로 덮어씀
+                existing.update(
+                        shiftType,
+                        shiftTime.startTime(),
+                        shiftTime.endTime(),
+                        request.source()
+                );
+            }
+        }
+
+        try {
+            dutyScheduleRepository.saveAll(toSave);
+            dutyScheduleRepository.flush();
+
+        } catch (DataIntegrityViolationException e) {
+
+            log.warn(
+                    "근무표 저장 중 중복 데이터 발생 - userId={}",
+                    userId,
+                    e
             );
 
-            // 기존 데이터가 없으면 신규 생성
-            if (existing == null) {
-
-                DutySchedule dutySchedule =
-                        DutySchedule.create(
-                                user,
-                                date,
-                                shiftType,
-                                shiftTime.startTime(),
-                                shiftTime.endTime(),
-                                request.source()
-                        );
-
-                dutyScheduleRepository.save(
-                        dutySchedule
-                );
-
-                continue;
-            }
-
-            // 미래 날짜 기존 데이터 수정 - OCR로 같은 미래 날짜를 다시 확정해도 새로운 값으로 덮어씀
-            existing.update(
-                    shiftType,
-                    shiftTime.startTime(),
-                    shiftTime.endTime(),
-                    request.source()
+            throw new BaseException(
+                    ErrorCode.DUPLICATE_RESOURCE,
+                    "이미 등록된 날짜의 근무가 포함되어 있습니다."
             );
         }
     }
@@ -258,72 +275,95 @@ public class DutyScheduleService {
             LocalDate today =
                     LocalDate.now(KST);
 
+            // 1차 파싱: 유효한 날짜만 추출해 범위 조회
+            List<LocalDate> parsedDates = new ArrayList<>();
+            for (JsonNode node : schedulesNode) {
+                try {
+                    parsedDates.add(LocalDate.parse(node.path("date").asString("")));
+                } catch (Exception ignored) {
+                    // 파싱 불가 항목은 건너뜀
+                }
+            }
+
+            Map<LocalDate, DutySchedule> existingMap = parsedDates.isEmpty()
+                    ? Map.of()
+                    : dutyScheduleRepository
+                            .findAllByUserIdAndDateBetweenOrderByDateAsc(
+                                    userId,
+                                    parsedDates.stream().min(LocalDate::compareTo).orElseThrow(),
+                                    parsedDates.stream().max(LocalDate::compareTo).orElseThrow()
+                            )
+                            .stream()
+                            .collect(Collectors.toMap(
+                                    DutySchedule::getDate,
+                                    Function.identity()
+                            ));
+
             List<DutyScheduleOcrItemResponse> schedules =
                     new ArrayList<>();
 
             for (JsonNode scheduleNode : schedulesNode) {
 
-                LocalDate date =
-                        LocalDate.parse(
-                                scheduleNode
-                                        .path("date")
-                                        .asString("")
-                        );
+                try {
+                    LocalDate date =
+                            LocalDate.parse(
+                                    scheduleNode
+                                            .path("date")
+                                            .asString("")
+                            );
 
-                ShiftType ocrShiftType =
-                        ShiftType.valueOf(
-                                scheduleNode
-                                        .path("shiftType")
-                                        .asString("")
-                        );
+                    ShiftType ocrShiftType =
+                            ShiftType.valueOf(
+                                    scheduleNode
+                                            .path("shiftType")
+                                            .asString("")
+                            );
 
-                DutySchedule existing =
-                        dutyScheduleRepository
-                                .findByUserIdAndDate(
-                                        userId,
-                                        date
-                                )
-                                .orElse(null);
+                    DutySchedule existing = existingMap.get(date);
 
-                ShiftType displayShiftType;
-                boolean editable;
+                    ShiftType displayShiftType;
+                    boolean editable;
 
-                // 과거
-                if (date.isBefore(today)) {
+                    // 과거
+                    if (date.isBefore(today)) {
 
-                    editable = false;
+                        editable = false;
 
-                    displayShiftType =
-                            existing != null
-                                    ? existing.getShiftType()
-                                    : ocrShiftType;
+                        displayShiftType =
+                                existing != null
+                                        ? existing.getShiftType()
+                                        : ocrShiftType;
 
-                    // 오늘 + 기존 근무 있음
-                } else if (date.equals(today)
-                        && existing != null) {
+                        // 오늘 + 기존 근무 있음
+                    } else if (date.equals(today)
+                            && existing != null) {
 
-                    editable = false;
+                        editable = false;
 
-                    displayShiftType =
-                            existing.getShiftType();
+                        displayShiftType =
+                                existing.getShiftType();
 
-                    // 오늘 미등록 또는 미래
-                } else {
+                        // 오늘 미등록 또는 미래
+                    } else {
 
-                    editable = true;
+                        editable = true;
 
-                    displayShiftType =
-                            ocrShiftType;
+                        displayShiftType =
+                                ocrShiftType;
+                    }
+
+                    schedules.add(
+                            new DutyScheduleOcrItemResponse(
+                                    date,
+                                    date.getDayOfWeek(),
+                                    displayShiftType,
+                                    editable
+                            )
+                    );
+
+                } catch (Exception e) {
+                    log.warn("OCR 항목 해석 실패, 건너뜀: {}", scheduleNode, e);
                 }
-
-                schedules.add(
-                        new DutyScheduleOcrItemResponse(
-                                date,
-                                date.getDayOfWeek(),
-                                displayShiftType,
-                                editable
-                        )
-                );
             }
 
             return new DutyScheduleOcrResponse(
