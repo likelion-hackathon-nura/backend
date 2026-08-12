@@ -2,15 +2,14 @@ package org.example.nura.domain.schedule.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.nura.domain.schedule.dto.request.DutyScheduleSaveRequest;
 import org.example.nura.domain.schedule.dto.response.DutyScheduleWeeklyResponse;
 import org.example.nura.domain.schedule.service.DutyScheduleService;
 import org.example.nura.global.common.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
@@ -42,6 +41,23 @@ public class DutyScheduleController {
         return ApiResponse.success(
                 "근무표 조회에 성공했습니다.",
                 response
+        );
+    }
+
+    @Operation(
+            summary = "근무표 일괄 등록/수정",
+            description = "근무표를 일괄 저장합니다. 기존 데이터가 없는 날짜는 신규 등록하고, 수정 가능한 기존 데이터는 갱신합니다."
+    )
+    @PutMapping
+    public ApiResponse<Void> saveSchedules(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody DutyScheduleSaveRequest request
+    ) {
+        dutyScheduleService.saveSchedules(userId, request);
+
+        return ApiResponse.success(
+                "근무표가 저장되었습니다.",
+                null
         );
     }
 }
