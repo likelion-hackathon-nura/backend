@@ -143,16 +143,33 @@ public class DutyScheduleService {
             );
         }
 
-        validateDuplicateDates(request);
+        if (request.schedules() == null || request.schedules().isEmpty()) {
+            throw new BaseException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "저장할 근무표가 없습니다."
+            );
+        }
 
         LocalDate today = LocalDate.now(KST);
+
+        // date null / 과거 날짜 검증
+        for (DutyScheduleItemRequest item : request.schedules()) {
+            validateDate(item.date(), today);
+        }
+
+        validateDuplicateDates(request);
 
         List<LocalDate> dates = request.schedules().stream()
                 .map(DutyScheduleItemRequest::date)
                 .toList();
 
-        LocalDate minDate = dates.stream().min(LocalDate::compareTo).orElseThrow();
-        LocalDate maxDate = dates.stream().max(LocalDate::compareTo).orElseThrow();
+        LocalDate minDate = dates.stream()
+                .min(LocalDate::compareTo)
+                .orElseThrow();
+
+        LocalDate maxDate = dates.stream()
+                .max(LocalDate::compareTo)
+                .orElseThrow();
 
         Map<LocalDate, DutySchedule> existingMap =
                 dutyScheduleRepository
@@ -171,8 +188,6 @@ public class DutyScheduleService {
 
             LocalDate date = item.date();
             ShiftType shiftType = item.shiftType();
-
-            validateDate(date, today);
 
             DutySchedule existing = existingMap.get(date);
 
