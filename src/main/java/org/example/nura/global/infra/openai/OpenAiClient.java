@@ -71,8 +71,8 @@ public class OpenAiClient {
             );
 
             throw new BaseException(
-                    ErrorCode.INVALID_INPUT_VALUE,
-                    "AI 요청 처리에 실패했습니다."
+                    ErrorCode.EXTERNAL_API_ERROR,
+                    "AI 서비스에 일시적인 오류가 발생했습니다."
             );
 
         } catch (Exception e) {
@@ -83,8 +83,8 @@ public class OpenAiClient {
             );
 
             throw new BaseException(
-                    ErrorCode.INVALID_INPUT_VALUE,
-                    "AI 요청 처리에 실패했습니다."
+                    ErrorCode.EXTERNAL_API_ERROR,
+                    "AI 서비스에 연결할 수 없습니다."
             );
         }
     }

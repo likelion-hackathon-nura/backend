@@ -13,6 +13,6 @@ public record DutyScheduleSaveRequest(
         DutyScheduleSource source,
 
         @NotEmpty
-        List<@Valid DutyScheduleItemRequest> schedules
+        List<@Valid @NotNull DutyScheduleItemRequest> schedules
 ) {
 }

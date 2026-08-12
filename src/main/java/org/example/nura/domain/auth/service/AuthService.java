@@ -11,6 +11,7 @@ import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.example.nura.global.security.JwtTokenProvider;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -47,7 +48,12 @@ public class AuthService {
         try {
             savedUser = userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
-            throw new BaseException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            Throwable cause = e.getCause();
+            if (cause instanceof ConstraintViolationException cv
+                    && "uk_users_email".equals(cv.getConstraintName())) {
+                throw new BaseException(ErrorCode.EMAIL_ALREADY_EXISTS);
+            }
+            throw e;
         }
 
         String accessToken =

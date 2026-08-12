@@ -14,6 +14,7 @@ import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.example.nura.global.infra.ocr.ClovaOcrClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 public class DutyScheduleService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final int MAX_PERIOD_DAYS = 90;
 
     private final DutyScheduleRepository dutyScheduleRepository;
     private final UserRepository userRepository;
@@ -48,6 +50,7 @@ public class DutyScheduleService {
     private final DutyScheduleOcrParser dutyScheduleOcrParser;
     private final ObjectMapper objectMapper;
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DutyScheduleOcrResponse recognizeSchedule(
             Long userId,
             MultipartFile image
@@ -229,7 +232,7 @@ public class DutyScheduleService {
                     choices.get(0)
                             .path("message")
                             .path("content")
-                            .asText();
+                            .asString("");
 
             if (content == null
                     || content.isBlank()) {
@@ -264,14 +267,14 @@ public class DutyScheduleService {
                         LocalDate.parse(
                                 scheduleNode
                                         .path("date")
-                                        .asText()
+                                        .asString("")
                         );
 
                 ShiftType ocrShiftType =
                         ShiftType.valueOf(
                                 scheduleNode
                                         .path("shiftType")
-                                        .asText()
+                                        .asString("")
                         );
 
                 DutySchedule existing =
@@ -440,6 +443,13 @@ public class DutyScheduleService {
             throw new BaseException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "조회 기간이 올바르지 않습니다."
+            );
+        }
+
+        if (startDate.until(endDate, java.time.temporal.ChronoUnit.DAYS) >= MAX_PERIOD_DAYS) {
+            throw new BaseException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "조회 기간은 최대 " + MAX_PERIOD_DAYS + "일까지 가능합니다."
             );
         }
     }
