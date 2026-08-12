@@ -11,28 +11,9 @@ import org.example.nura.domain.user.entity.enums.SkinConcernType;
 import org.example.nura.domain.user.entity.enums.SkinSensitivityLevel;
 import org.example.nura.domain.user.entity.enums.SkinType;
 
-import java.time.LocalTime;
 import java.util.List;
 
-public record OnboardingRequest(
-
-        @NotNull
-        LocalTime shiftDStart,
-
-        @NotNull
-        LocalTime shiftDEnd,
-
-        @NotNull
-        LocalTime shiftEStart,
-
-        @NotNull
-        LocalTime shiftEEnd,
-
-        @NotNull
-        LocalTime shiftNStart,
-
-        @NotNull
-        LocalTime shiftNEnd,
+public record UserPreferencesUpdateRequest(
 
         @NotNull
         @Min(value = 240, message = "목표 수면 시간은 최소 4시간입니다.")
@@ -63,6 +44,5 @@ public record OnboardingRequest(
                 message = "피부 고민은 1개 이상 3개 이하로 선택해주세요."
         )
         List<@NotNull SkinConcernType> skinConcerns
-
 ) {
 }
