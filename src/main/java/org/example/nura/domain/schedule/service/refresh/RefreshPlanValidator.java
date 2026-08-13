@@ -51,25 +51,21 @@ public class RefreshPlanValidator {
         Set<RestActivityType> allowedActivities =
                 Set.copyOf(request.restActivities());
 
-        // 일반 회복 활동 슬롯 사용량
-        Map<String, Integer> refreshUsedMinutesBySlot =
-                new HashMap<>();
-
-        // 피부 회복 슬롯 사용량
-        Map<String, Integer> skinUsedMinutesBySlot =
+        // 동일 슬롯 누적 사용량 (일반 회복 + 피부 회복 통합)
+        Map<String, Integer> usedMinutesBySlot =
                 new HashMap<>();
 
         validateRefreshActivities(
                 response,
                 allowedActivities,
                 availableSlotMap,
-                refreshUsedMinutesBySlot
+                usedMinutesBySlot
         );
 
         validateSkinRecovery(
                 response.skinRecovery(),
                 skinRecoverySlotMap,
-                skinUsedMinutesBySlot
+                usedMinutesBySlot
         );
     }
 
