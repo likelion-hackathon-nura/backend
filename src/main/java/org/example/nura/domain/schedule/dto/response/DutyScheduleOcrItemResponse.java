@@ -8,7 +8,6 @@ import java.time.LocalDate;
 public record DutyScheduleOcrItemResponse(
         LocalDate date,
         DayOfWeek dayOfWeek,
-        ShiftType shiftType,
-        boolean editable
+        ShiftType shiftType
 ) {
 }
