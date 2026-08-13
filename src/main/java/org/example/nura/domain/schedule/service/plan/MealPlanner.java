@@ -223,7 +223,7 @@ public class MealPlanner {
         }
 
         LocalDateTime preWorkLimit =
-                workStart.minusHours(1);
+                workStart.minusMinutes(90);
 
         // 근무 시작 이후의 슬롯은 퇴근 후일 수 있으므로 허용
         if (!slot.startAt().isBefore(workStart)) {
@@ -256,7 +256,7 @@ public class MealPlanner {
         }
 
         LocalDateTime refreshLimit =
-                workStart.minusHours(1);
+                workStart.minusMinutes(90);
 
         return endAt.isAfter(refreshLimit)
                 ? refreshLimit

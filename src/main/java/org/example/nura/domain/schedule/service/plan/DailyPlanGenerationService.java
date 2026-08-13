@@ -107,7 +107,6 @@ public class DailyPlanGenerationService {
             occupied.add(interval);
         }
 
-        // 수면 배치
         TimeInterval sleepInterval =
                 sleepPlanner.plan(
                         date,
@@ -354,7 +353,7 @@ public class DailyPlanGenerationService {
         }
 
         LocalDateTime refreshLimit =
-                workStart.minusHours(1);
+                workStart.minusMinutes(90);
 
         return intervals.stream()
                 .map(interval -> {

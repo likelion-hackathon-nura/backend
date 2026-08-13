@@ -15,7 +15,7 @@ import java.util.List;
 @Component
 public class SleepPlanner {
 
-    private static final int PRE_WORK_BUFFER_MINUTES = 60;
+    private static final int PRE_WORK_BUFFER_MINUTES = 90;
     private static final LocalTime DEFAULT_SLEEP_START = LocalTime.MIDNIGHT;
 
     public TimeInterval plan(
