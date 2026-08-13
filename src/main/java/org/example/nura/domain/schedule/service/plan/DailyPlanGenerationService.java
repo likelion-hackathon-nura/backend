@@ -42,6 +42,8 @@ public class DailyPlanGenerationService {
 
     private final SkinRecoverySlotResolver skinRecoverySlotResolver;
 
+    private final DailyPlanValidator dailyPlanValidator;
+
     public List<PlannedTimeBlock> generate(
             Long userId,
             DailyPlanContext context
@@ -258,13 +260,22 @@ public class DailyPlanGenerationService {
             );
         }
 
-        return blocks.stream()
-                .sorted(
-                        Comparator.comparing(
-                                PlannedTimeBlock::startAt
+        List<PlannedTimeBlock> result =
+                blocks.stream()
+                        .sorted(
+                                Comparator.comparing(
+                                        PlannedTimeBlock::startAt
+                                )
                         )
-                )
-                .toList();
+                        .toList();
+
+        // 최종 하루 설계 검증
+        dailyPlanValidator.validate(
+                date,
+                result
+        );
+
+        return result;
     }
 
     private RefreshPlanAiRequest createRefreshAiRequest(
