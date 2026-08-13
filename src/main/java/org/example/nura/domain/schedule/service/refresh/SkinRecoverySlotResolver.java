@@ -37,15 +37,7 @@ public class SkinRecoverySlotResolver {
                         .findFirst()
                         .orElse(null);
 
-        // 전날 N 근무에서 오늘 아침 퇴근한 경우
-        if (previousNightTail != null) {
-            return filterAfterWork(
-                    availableSlots,
-                    previousNightTail.endAt()
-            );
-        }
-
-        // 오늘 D/E 근무
+        // 1. 오늘 D/E 근무가 있으면 오늘 퇴근 이후
         if (todayShiftType == ShiftType.D
                 || todayShiftType == ShiftType.E) {
 
@@ -54,9 +46,7 @@ public class SkinRecoverySlotResolver {
                             .filter(interval ->
                                     interval.startAt()
                                             .isAfter(dayStart)
-                            )
-                            .filter(interval ->
-                                    interval.startAt()
+                                            && interval.startAt()
                                             .isBefore(dayEnd)
                             )
                             .findFirst()
@@ -70,12 +60,20 @@ public class SkinRecoverySlotResolver {
             }
         }
 
-        // 오늘 첫 N 근무 - 퇴근이 다음 날이므로 오늘 안에는 퇴근 이후 시간이 없음
-        if (todayShiftType == ShiftType.N) {
-            return List.of();
+        // 2. 전날 N 근무가 오늘 아침까지 이어졌다면 -> 해당 근무 퇴근 이후에만 피부 회복 가능
+        if (previousNightTail != null) {
+            return filterAfterWork(
+                    availableSlots,
+                    previousNightTail.endAt()
+            );
         }
 
-        // OFF 또는 근무표 미등록
+        // 3. 오늘 첫 N 근무 -> 오늘 사용 가능한 빈 시간에 피부 회복 가능
+        if (todayShiftType == ShiftType.N) {
+            return availableSlots;
+        }
+
+        // 4. OFF 또는 근무표 미등록
         return availableSlots;
     }
 

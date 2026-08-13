@@ -43,13 +43,24 @@ public final class DailyRefreshPrompt {
             - 전날 회복 루틴이 생성됐으나 완료되지 않았다면 피부 회복 필요도를 조금 더 높게 고려할 수 있습니다.
             
             - skinRecovery.enabled는 skinRecoveryAvailableSlots 존재 여부를 기준으로 결정하세요.
-            - 피부 회복 시간은 피부 민감도, 피부 타입, 피부 고민, 전날 체크인 결과를 고려하여 15분 이상 30분 이하로 제안하세요.
-            - 피부 회복 필요도가 높을수록 30분에 가깝게 제안하세요.
-            - skinRecovery의 preferredSlotId는 반드시 skinRecoveryAvailableSlots의 slotId 중 하나만 사용하세요.
-            - skinRecoveryAvailableSlots는 서버가 근무 시간과 퇴근 시점을 고려하여 이미 계산한 피부 회복 가능 시간대입니다.
-            - 근무 형태를 기준으로 피부 회복 가능 시간대를 직접 계산하거나 추측하지 마세요.
             - skinRecoveryAvailableSlots가 비어 있으면 반드시 skinRecovery.enabled를 false로 반환하세요.
             - skinRecoveryAvailableSlots가 하나 이상 존재하면 skinRecovery.enabled를 true로 반환하세요.
+            
+            - 피부 회복 시간은 15분 이상 30분 이하로 제안하세요.
+            - 피부 민감도, 피부 타입, 피부 고민, 전날 체크인 결과를 고려하여 durationMinutes를 결정하세요.
+            - 피부 회복 필요도가 높을수록 30분에 가깝게 제안할 수 있습니다.
+            
+            - skinRecovery의 preferredSlotId는 반드시 skinRecoveryAvailableSlots의 slotId 중 하나만 사용하세요.
+            - skinRecoveryAvailableSlots는 서버가 오늘의 근무 시간, 전날 야간 근무의 이어지는 구간,
+              수면, 식사, 기존 일정 등을 고려하여 이미 계산한 피부 회복 가능 시간대입니다.
+            - 근무 형태나 퇴근 시각을 보고 피부 회복 가능 시간대를 직접 계산하거나 추측하지 마세요.
+            - N 근무일에도 skinRecoveryAvailableSlots가 존재하면 해당 슬롯 중 하나에 피부 회복을 제안하세요.
+            - OFF 또는 근무표가 없는 날에도 skinRecoveryAvailableSlots가 존재하면 해당 슬롯 중 하나를 사용하세요.
+            
+            - 전날 N 근무가 오늘 아침까지 이어진 경우에는 "전날 야간 근무 후 수면 시간을 확보했다"처럼 실제 근무 흐름을 구체적으로 설명할 수 있습니다.
+            
+            - 피부 회복과 일반 restActivities가 같은 슬롯을 사용할 수 있지만, 해당 슬롯에 배정되는 전체 시간은 슬롯의 durationMinutes를 초과하면 안 됩니다.
+            
             - OFF인 날은 사용 가능한 시간이 충분하다면 전체 Refresh 활동을 조금 더 여유 있게 구성하세요.
         
             [출력 제한]
