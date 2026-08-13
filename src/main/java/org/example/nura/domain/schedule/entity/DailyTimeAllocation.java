@@ -126,22 +126,30 @@ public class DailyTimeAllocation extends BaseTimeEntity {
             Integer refreshTime,
             Integer myTime
     ) {
-        if (socialTime == null || refreshTime == null || myTime == null) {
+        if (socialTime == null
+                || refreshTime == null
+                || myTime == null) {
             throw new IllegalArgumentException(
                     "시간 배분 값은 null일 수 없습니다."
             );
         }
 
-        if (socialTime < 0 || refreshTime < 0 || myTime < 0) {
+        if (socialTime < 0
+                || refreshTime < 0
+                || myTime < 0) {
             throw new IllegalArgumentException(
                     "시간 배분 값은 0 이상이어야 합니다."
             );
         }
 
-        long totalMinutes = (long) socialTime + refreshTime + myTime;
-        if (totalMinutes > 24 * 60) {
+        long totalMinutes =
+                (long) socialTime
+                        + refreshTime
+                        + myTime;
+
+        if (totalMinutes != 24 * 60) {
             throw new IllegalArgumentException(
-                    "하루 시간 배분 합계는 1440분 이하여야 합니다."
+                    "하루 시간 배분 합계는 1440분이어야 합니다."
             );
         }
     }
