@@ -63,6 +63,7 @@ public class RefreshPlanValidator {
         );
 
         validateSkinRecovery(
+                request,
                 response.skinRecovery(),
                 skinRecoverySlotMap,
                 usedMinutesBySlot
@@ -122,12 +123,34 @@ public class RefreshPlanValidator {
     }
 
     private void validateSkinRecovery(
+            RefreshPlanAiRequest request,
             SkinRecoveryPlan skinRecovery,
             Map<String, AvailableSlotContext> slotMap,
             Map<String, Integer> usedMinutesBySlot
     ) {
-        if (skinRecovery == null
-                || !skinRecovery.enabled()) {
+        boolean hasSkinRecoverySlots =
+                request.skinRecoveryAvailableSlots() != null
+                        && !request.skinRecoveryAvailableSlots().isEmpty();
+
+        if (skinRecovery == null) {
+            if (hasSkinRecoverySlots) {
+                throw new BaseException(
+                        ErrorCode.EXTERNAL_API_ERROR,
+                        "피부 회복 가능 시간대와 추천 여부가 일치하지 않습니다."
+                );
+            }
+            return;
+        }
+
+        if (hasSkinRecoverySlots
+                != skinRecovery.enabled()) {
+            throw new BaseException(
+                    ErrorCode.EXTERNAL_API_ERROR,
+                    "피부 회복 가능 시간대와 추천 여부가 일치하지 않습니다."
+            );
+        }
+
+        if (!skinRecovery.enabled()) {
             return;
         }
 
