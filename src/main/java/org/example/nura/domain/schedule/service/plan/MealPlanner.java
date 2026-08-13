@@ -1,4 +1,4 @@
-// 온보딩에서 받은 거에 따라서 식시 사긴 refresh time에 배치
+// 온보딩에서 받은 거에 따라서 식사 시간을 refresh time에 배치
 package org.example.nura.domain.schedule.service.plan;
 
 import org.example.nura.domain.schedule.dto.context.TimeInterval;
@@ -208,16 +208,9 @@ public class MealPlanner {
             List<TimeInterval> workIntervals
     ) {
         LocalDateTime workStart =
-                workIntervals.stream()
-                        .map(TimeInterval::startAt)
-                        .filter(startAt ->
-                                startAt.toLocalDate()
-                                        .equals(date)
-                        )
-                        .min(Comparator.naturalOrder())
-                        .orElse(null);
+                findTodayWorkStart(date, workIntervals);
 
-        // OFF / 근무표 없음
+        // OFF / 오늘 새로 시작하는 근무 없음
         if (workStart == null) {
             return true;
         }
@@ -225,13 +218,34 @@ public class MealPlanner {
         LocalDateTime preWorkLimit =
                 workStart.minusMinutes(90);
 
-        // 근무 시작 이후의 슬롯은 퇴근 후일 수 있으므로 허용
+        // 근무 시작 이후 슬롯은 퇴근 후일 수 있으므로 허용
         if (!slot.startAt().isBefore(workStart)) {
             return true;
         }
 
-        // 근무 전이라면 출근 1시간 전까지만 허용
+        // 출근 전이라면 출근 90분 전까지만 식사 가능
         return !slot.endAt().isAfter(preWorkLimit);
+    }
+
+    private LocalDateTime findTodayWorkStart(
+            LocalDate date,
+            List<TimeInterval> workIntervals
+    ) {
+        LocalDateTime dayStart =
+                date.atStartOfDay();
+
+        LocalDateTime dayEnd =
+                date.plusDays(1).atStartOfDay();
+
+        return workIntervals.stream()
+                .map(TimeInterval::startAt)
+                // 00:00 시작은 전날 N의 이어지는 근무이므로 제외
+                .filter(startAt ->
+                        startAt.isAfter(dayStart)
+                                && startAt.isBefore(dayEnd)
+                )
+                .min(Comparator.naturalOrder())
+                .orElse(null);
     }
 
     private LocalDateTime capBeforeWorkStart(

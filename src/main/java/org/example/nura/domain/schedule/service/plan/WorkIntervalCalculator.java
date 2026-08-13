@@ -34,11 +34,15 @@ public class WorkIntervalCalculator {
         List<TimeInterval> intervals =
                 new ArrayList<>();
 
-        // 전날 근무 조회
+        // 전날 근무 조회 (OFF 제외)
         dutyScheduleRepository
                 .findByUserIdAndDate(
                         userId,
                         date.minusDays(1)
+                )
+                .filter(schedule ->
+                        schedule.getShiftType()
+                                != ShiftType.OFF
                 )
                 .map(this::toWorkInterval)
                 .map(interval ->
@@ -78,6 +82,12 @@ public class WorkIntervalCalculator {
     ) {
         LocalDate date =
                 schedule.getDate();
+
+        // startTime 또는 endTime이 null이면 처리 불가
+        if (schedule.getStartTime() == null
+                || schedule.getEndTime() == null) {
+            return null;
+        }
 
         LocalDateTime startAt =
                 date.atTime(

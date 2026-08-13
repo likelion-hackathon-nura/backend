@@ -27,10 +27,10 @@ public class DutyScheduleOcrClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${clova.ocr.api-url:}")
+    @Value("${clova.ocr.api-url}")
     private String apiUrl;
 
-    @Value("${clova.ocr.secret-key:}")
+    @Value("${clova.ocr.secret-key}")
     private String secretKey;
 
     public DutyScheduleOcrClient(

@@ -16,6 +16,8 @@ import org.example.nura.domain.schedule.repository.TimeBlockRepository;
 import org.example.nura.domain.schedule.service.plan.DailyPlanContextReader;
 import org.example.nura.domain.schedule.service.plan.DailyPlanGenerationService;
 import org.example.nura.domain.schedule.service.plan.DailyPlanSaveService;
+import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator;
+import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator.DailyPlanSummary;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
@@ -41,6 +43,8 @@ public class HomeService {
     private final DailyPlanContextReader dailyPlanContextReader;
     private final DailyPlanGenerationService dailyPlanGenerationService;
     private final DailyPlanSaveService dailyPlanSaveService;
+    private final DailyPlanSummaryCalculator dailyPlanSummaryCalculator;
+    private final HomeAiCommentService homeAiCommentService;
 
     private final HomeBadgeGenerator homeBadgeGenerator;
 
@@ -110,13 +114,39 @@ public class HomeService {
                         context
                 );
 
-        // DB 저장
-        DailyTimeAllocation allocation =
-                dailyPlanSaveService.save(
-                        userId,
-                        context,
+        // AI 코멘트 먼저 생성 (트랜잭션 밖)
+        DailyPlanSummary summary =
+                dailyPlanSummaryCalculator.calculate(
                         plannedBlocks
                 );
+
+        String aiComment =
+                homeAiCommentService.generate(
+                        context,
+                        summary,
+                        plannedBlocks
+                );
+
+        // DB 저장 (트랜잭션 내, LLM 호출 없음)
+        DailyTimeAllocation allocation;
+        try {
+            allocation =
+                    dailyPlanSaveService.save(
+                            userId,
+                            context,
+                            plannedBlocks,
+                            aiComment
+                    );
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // 동시 요청으로 이미 생성된 경우 기존 설계를 반환
+            allocation =
+                    dailyTimeAllocationRepository
+                            .findByUserIdAndDate(
+                                    userId,
+                                    today
+                            )
+                            .orElseThrow(() -> e);
+        }
 
         return toResponse(
                 userId,

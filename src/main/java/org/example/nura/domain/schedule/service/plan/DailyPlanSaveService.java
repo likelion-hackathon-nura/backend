@@ -34,7 +34,8 @@ public class DailyPlanSaveService {
     public DailyTimeAllocation save(
             Long userId,
             DailyPlanContext context,
-            List<PlannedTimeBlock> plannedBlocks
+            List<PlannedTimeBlock> plannedBlocks,
+            String aiComment
     ) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() ->
@@ -46,14 +47,6 @@ public class DailyPlanSaveService {
         // 총 시간 계산
         DailyPlanSummary summary =
                 dailyPlanSummaryCalculator.calculate(
-                        plannedBlocks
-                );
-
-        // 홈 ai 코멘트 생성
-        String aiComment =
-                homeAiCommentService.generate(
-                        context,
-                        summary,
                         plannedBlocks
                 );
 
