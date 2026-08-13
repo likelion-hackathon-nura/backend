@@ -66,7 +66,7 @@ public class DutyScheduleController {
 
     @Operation(
             summary = "근무표 OCR 인식",
-            description = "근무표 이미지를 분석하여 날짜별 근무 형태를 반환합니다."
+            description = "근무표 이미지를 분석하여 날짜별 근무 형태를 반환합니다. 현재 시점 기준 등록 가능한 일정만 반환합니다.(과거, 오늘 이미 등록된 일정은 제외)"
     )
     @PostMapping(
             value = "/ocr",

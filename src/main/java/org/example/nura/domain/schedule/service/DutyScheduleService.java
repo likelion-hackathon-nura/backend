@@ -336,43 +336,17 @@ public class DutyScheduleService {
 
                     DutySchedule existing = existingMap.get(date);
 
-                    ShiftType displayShiftType;
-                    boolean editable;
-
-                    // 과거
-                    if (date.isBefore(today)) {
-
-                        editable = false;
-
-                        displayShiftType =
-                                existing != null
-                                        ? existing.getShiftType()
-                                        : ocrShiftType;
-
-                        // 오늘 + 기존 근무 있음
-                    } else if (date.equals(today)
-                            && existing != null) {
-
-                        editable = false;
-
-                        displayShiftType =
-                                existing.getShiftType();
-
-                        // 오늘 미등록 또는 미래
-                    } else {
-
-                        editable = true;
-
-                        displayShiftType =
-                                ocrShiftType;
+                    // 과거 날짜와 이미 등록된 오늘 날짜는 제외
+                    if (date.isBefore(today)
+                            || (date.equals(today) && existing != null)) {
+                        continue;
                     }
 
                     schedules.add(
                             new DutyScheduleOcrItemResponse(
                                     date,
                                     date.getDayOfWeek(),
-                                    displayShiftType,
-                                    editable
+                                    ocrShiftType
                             )
                     );
 
