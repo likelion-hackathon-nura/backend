@@ -1,30 +1,30 @@
-package org.example.nura.global.infra.ocr;
+package org.example.nura.global.infra.clova;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.client.RestClientResponseException;
-import tools.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ClovaOcrClient {
 
-    private final RestClient.Builder restClientBuilder;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     @Value("${clova.ocr.api-url}")
@@ -32,6 +32,21 @@ public class ClovaOcrClient {
 
     @Value("${clova.ocr.secret-key}")
     private String secretKey;
+
+    public ClovaOcrClient(
+            RestClient.Builder restClientBuilder,
+            ObjectMapper objectMapper
+    ) {
+        this.objectMapper = objectMapper;
+
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(15));
+
+        this.restClient = restClientBuilder
+                .requestFactory(requestFactory)
+                .build();
+    }
 
     public String analyze(MultipartFile image) {
         validateImage(image);
@@ -41,7 +56,9 @@ public class ClovaOcrClient {
                     new ByteArrayResource(image.getBytes()) {
                         @Override
                         public String getFilename() {
-                            return image.getOriginalFilename();
+                            return image.getOriginalFilename() == null
+                                    ? "image.jpg"
+                                    : image.getOriginalFilename();
                         }
                     };
 
@@ -53,22 +70,16 @@ public class ClovaOcrClient {
                     "images", List.of(
                             Map.of(
                                     "format", resolveFormat(image),
-                                    "name", "duty-schedule"
+                                    "name", "cosmetic-image"
                             )
                     )
             );
 
-            MultiValueMap<String, Object> body =
-                    new LinkedMultiValueMap<>();
-
-            body.add(
-                    "message",
-                    objectMapper.writeValueAsString(message)
-            );
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("message", objectMapper.writeValueAsString(message));
             body.add("file", imageResource);
 
-            return restClientBuilder.build()
-                    .post()
+            return restClient.post()
                     .uri(apiUrl)
                     .header("X-OCR-SECRET", secretKey)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -77,7 +88,6 @@ public class ClovaOcrClient {
                     .body(String.class);
 
         } catch (RestClientResponseException e) {
-
             log.error(
                     "CLOVA OCR API 오류 - status={}, body={}",
                     e.getStatusCode(),
@@ -88,7 +98,7 @@ public class ClovaOcrClient {
             if (e.getStatusCode().is4xxClientError()) {
                 throw new BaseException(
                         ErrorCode.INVALID_INPUT_VALUE,
-                        "근무표 OCR 처리에 실패했습니다."
+                        "화장품 OCR 처리에 실패했습니다."
                 );
             }
 
@@ -98,12 +108,7 @@ public class ClovaOcrClient {
             );
 
         } catch (Exception e) {
-
-            log.error(
-                    "CLOVA OCR 처리 중 예상하지 못한 오류",
-                    e
-            );
-
+            log.error("CLOVA OCR 처리 중 예상하지 못한 오류", e);
             throw new BaseException(
                     ErrorCode.EXTERNAL_API_ERROR,
                     "OCR 서비스에 연결할 수 없습니다."
@@ -115,14 +120,12 @@ public class ClovaOcrClient {
         if (image == null || image.isEmpty()) {
             throw new BaseException(
                     ErrorCode.INVALID_INPUT_VALUE,
-                    "근무표 이미지는 필수입니다."
+                    "화장품 이미지는 필수입니다."
             );
         }
 
         String contentType = image.getContentType();
-
-        if (contentType == null
-                || !contentType.startsWith("image/")) {
+        if (contentType == null || !contentType.startsWith("image/")) {
             throw new BaseException(
                     ErrorCode.INVALID_INPUT_VALUE,
                     "이미지 파일만 업로드할 수 있습니다."
@@ -132,11 +135,9 @@ public class ClovaOcrClient {
 
     private String resolveFormat(MultipartFile image) {
         String contentType = image.getContentType();
-
         if ("image/png".equals(contentType)) {
             return "png";
         }
-
         return "jpg";
     }
 }
