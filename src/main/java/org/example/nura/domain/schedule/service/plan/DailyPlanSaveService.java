@@ -53,7 +53,8 @@ public class DailyPlanSaveService {
         String aiComment =
                 homeAiCommentService.generate(
                         context,
-                        summary
+                        summary,
+                        plannedBlocks
                 );
 
         // 하루 시간 배분 저장

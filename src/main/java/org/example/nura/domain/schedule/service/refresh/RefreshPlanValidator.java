@@ -135,7 +135,8 @@ public class RefreshPlanValidator {
             return;
         }
 
-        if (skinRecovery.preferredSlotId() == null) {
+        if (skinRecovery.preferredSlotId() == null
+                || skinRecovery.durationMinutes() == null) {
             throw invalidResponse();
         }
 

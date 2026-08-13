@@ -54,6 +54,16 @@ public class MealPlanner {
                         occupied
                 );
 
+        // 선호 시간대에 식사를 배치하지 못하면 퇴근 이후 빈 시간에 배치
+        if (firstMeal == null) {
+            firstMeal =
+                    findFallbackMealSlot(
+                            date,
+                            workIntervals,
+                            occupied
+                    );
+        }
+
         if (firstMeal != null) {
             meals.add(firstMeal);
             occupied.add(firstMeal);
@@ -81,6 +91,53 @@ public class MealPlanner {
         return meals;
     }
 
+    private TimeInterval findFallbackMealSlot(
+            LocalDate date,
+            List<TimeInterval> workIntervals,
+            List<TimeInterval> occupiedIntervals
+    ) {
+        LocalDateTime dayEnd =
+                date.plusDays(1).atStartOfDay();
+
+        LocalDateTime fallbackStart =
+                workIntervals.stream()
+                        .filter(interval ->
+                                interval.startAt()
+                                        .toLocalDate()
+                                        .equals(date)
+                        )
+                        .map(TimeInterval::endAt)
+                        .max(Comparator.naturalOrder())
+                        .orElse(
+                                date.atTime(FIRST_MEAL_START)
+                        );
+
+        List<TimeInterval> freeSlots =
+                calculateFreeSlots(
+                        fallbackStart,
+                        dayEnd,
+                        occupiedIntervals
+                );
+
+        return freeSlots.stream()
+                .filter(slot ->
+                        !slot.startAt()
+                                .plusMinutes(MEAL_DURATION_MINUTES)
+                                .isAfter(slot.endAt())
+                )
+                .findFirst()
+                .map(slot ->
+                        new TimeInterval(
+                                slot.startAt(),
+                                slot.startAt()
+                                        .plusMinutes(
+                                                MEAL_DURATION_MINUTES
+                                        )
+                        )
+                )
+                .orElse(null);
+    }
+
     private int resolveMealCount(
             MealPattern mealPattern
     ) {
@@ -105,15 +162,7 @@ public class MealPlanner {
                 date.atTime(preferredStart);
 
         LocalDateTime rangeEnd =
-                capBeforeWorkStart(
-                        date,
-                        preferredEnd,
-                        workIntervals
-                );
-
-        if (!rangeStart.isBefore(rangeEnd)) {
-            return null;
-        }
+                date.atTime(preferredEnd);
 
         List<TimeInterval> freeSlots =
                 calculateFreeSlots(
@@ -123,6 +172,14 @@ public class MealPlanner {
                 );
 
         return freeSlots.stream()
+                // 출근 1시간 전에는 식사 배치하지 않음
+                .filter(slot ->
+                        isBeforePreWorkLimit(
+                                date,
+                                slot,
+                                workIntervals
+                        )
+                )
                 .filter(slot ->
                         !slot.startAt()
                                 .plusMinutes(MEAL_DURATION_MINUTES)
@@ -143,6 +200,38 @@ public class MealPlanner {
                         )
                 )
                 .orElse(null);
+    }
+
+    private boolean isBeforePreWorkLimit(
+            LocalDate date,
+            TimeInterval slot,
+            List<TimeInterval> workIntervals
+    ) {
+        LocalDateTime workStart =
+                workIntervals.stream()
+                        .map(TimeInterval::startAt)
+                        .filter(startAt ->
+                                startAt.toLocalDate()
+                                        .equals(date)
+                        )
+                        .min(Comparator.naturalOrder())
+                        .orElse(null);
+
+        // OFF / 근무표 없음
+        if (workStart == null) {
+            return true;
+        }
+
+        LocalDateTime preWorkLimit =
+                workStart.minusHours(1);
+
+        // 근무 시작 이후의 슬롯은 퇴근 후일 수 있으므로 허용
+        if (!slot.startAt().isBefore(workStart)) {
+            return true;
+        }
+
+        // 근무 전이라면 출근 1시간 전까지만 허용
+        return !slot.endAt().isAfter(preWorkLimit);
     }
 
     private LocalDateTime capBeforeWorkStart(

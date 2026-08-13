@@ -4,12 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.home.prompt.HomeAiCommentPrompt;
 import org.example.nura.domain.schedule.dto.context.DailyPlanContext;
+import org.example.nura.domain.schedule.dto.plan.PlannedTimeBlock;
 import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator.DailyPlanSummary;
 import org.example.nura.global.infra.openai.OpenAiClient;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -22,7 +24,8 @@ public class HomeAiCommentService {
 
     public String generate(
             DailyPlanContext context,
-            DailyPlanSummary summary
+            DailyPlanSummary summary,
+            List<PlannedTimeBlock> plannedBlocks
     ) {
         try {
             Map<String, Object> data =
@@ -101,6 +104,39 @@ public class HomeAiCommentService {
             data.put(
                     "myMinutes",
                     summary.myMinutes()
+            );
+
+            // 실제 최종 배치 결과
+            data.put(
+                    "plannedBlocks",
+                    plannedBlocks.stream()
+                            .map(block -> {
+                                Map<String, Object> blockData =
+                                        new LinkedHashMap<>();
+
+                                blockData.put(
+                                        "category",
+                                        block.category()
+                                );
+
+                                blockData.put(
+                                        "label",
+                                        block.label()
+                                );
+
+                                blockData.put(
+                                        "startAt",
+                                        block.startAt()
+                                );
+
+                                blockData.put(
+                                        "endAt",
+                                        block.endAt()
+                                );
+
+                                return blockData;
+                            })
+                            .toList()
             );
 
             String userPrompt =
