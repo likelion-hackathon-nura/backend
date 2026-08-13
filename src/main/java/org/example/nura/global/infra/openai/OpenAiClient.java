@@ -23,7 +23,7 @@ public class OpenAiClient {
     @Value("${ai.openai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
 
-    @Value("${ai.openai.api-key:}")
+    @Value("${ai.openai.api-key}")
     private String apiKey;
 
     @Value("${ai.openai.model:gpt-4o-mini}")

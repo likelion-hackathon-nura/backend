@@ -139,4 +139,65 @@ public class OpenAiService {
 
         return "오늘 피부 상태에 맞는 균형 루틴을 권장합니다.";
     }
+
+    public IngredientParseResult parseIngredients(String rawText) {
+        // API Key 검사 및 빈 텍스트 인풋 Fallback
+        if (openAiApiKey == null || openAiApiKey.isBlank()) {
+            log.warn("[OpenAiService] OpenAI API Key가 설정되지 않았습니다. 원본 텍스트를 반환합니다.");
+            return new IngredientParseResult(rawText, "없음");
+        }
+
+        if (rawText == null || rawText.isBlank()) {
+            return new IngredientParseResult("성분 정보를 읽을 수 없습니다.", "없음");
+        }
+
+        try {
+            String prompt = "다음 텍스트는 화장품 뒷면 라벨에서 추출한 OCR 결과입니다.\n"
+                    + "이 텍스트에서 '전성분'과 '핵심 성분'을 구분하여 추출해주세요.\n\n"
+                    + "1. cosmeticIngredients: 오타가 보정된 전체 전성분 (쉼표로 구분)\n"
+                    + "2. coreIngredients: 정제수, 글리세린, 부틸렌글라이콜 등 기본 베이스를 제외하고 피부 개선 효과가 뛰어난 주요 핵심 성분 1~4개 (쉼표로 구분)\n\n"
+                    + "응답은 반드시 아래 JSON 포맷으로만 답변하세요:\n"
+                    + "{\n"
+                    + "  \"cosmeticIngredients\": \"...\",\n"
+                    + "  \"coreIngredients\": \"...\"\n"
+                    + "}\n\n"
+                    + "텍스트:\n" + rawText;
+
+            Map<String, Object> payload = Map.of(
+                    "model", openAiModel,
+                    "temperature", 0.2,
+                    "response_format", Map.of("type", "json_object"),
+                    "messages", List.of(
+                            Map.of("role", "system", "content", "너는 화장품 전성분 분석 파서(Parser)이다."),
+                            Map.of("role", "user", "content", prompt)
+                    )
+            );
+
+            String responseBody = openAiClient.post()
+                    .uri("/chat/completions")
+                    .header("Authorization", "Bearer " + openAiApiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+
+            JsonNode root = objectMapper.readTree(responseBody);
+            String jsonContent = root.path("choices").path(0).path("message").path("content").asText();
+            JsonNode parsedJson = objectMapper.readTree(jsonContent);
+
+            return new IngredientParseResult(
+                    parsedJson.path("cosmeticIngredients").asText(rawText),
+                    parsedJson.path("coreIngredients").asText("없음")
+            );
+
+        } catch (Exception e) {
+            log.warn("[OpenAiService] 성분 파싱 실패: {}", e.getMessage());
+            return new IngredientParseResult(rawText, "없음");
+        }
+    }
+
+    public record IngredientParseResult(
+            String cosmeticIngredients,
+            String coreIngredients
+    ) {}
 }

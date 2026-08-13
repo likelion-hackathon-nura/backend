@@ -1,30 +1,30 @@
 package org.example.nura.global.infra.ocr;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.client.RestClientResponseException;
-import tools.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
-public class ClovaOcrClient {
+public class DutyScheduleOcrClient {
 
-    private final RestClient.Builder restClientBuilder;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     @Value("${clova.ocr.api-url:}")
@@ -32,6 +32,23 @@ public class ClovaOcrClient {
 
     @Value("${clova.ocr.secret-key:}")
     private String secretKey;
+
+    public DutyScheduleOcrClient(
+            RestClient.Builder restClientBuilder,
+            ObjectMapper objectMapper
+    ) {
+        this.objectMapper = objectMapper;
+
+        SimpleClientHttpRequestFactory requestFactory =
+                new SimpleClientHttpRequestFactory();
+
+        requestFactory.setConnectTimeout((int) Duration.ofSeconds(3).toMillis());
+        requestFactory.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
+
+        this.restClient = restClientBuilder
+                .requestFactory(requestFactory)
+                .build();
+    }
 
     public String analyze(MultipartFile image) {
         validateImage(image);
@@ -41,7 +58,9 @@ public class ClovaOcrClient {
                     new ByteArrayResource(image.getBytes()) {
                         @Override
                         public String getFilename() {
-                            return image.getOriginalFilename();
+                            return image.getOriginalFilename() == null
+                                    ? "image.jpg"
+                                    : image.getOriginalFilename();
                         }
                     };
 
@@ -67,7 +86,7 @@ public class ClovaOcrClient {
             );
             body.add("file", imageResource);
 
-            return restClientBuilder.build()
+            return restClient
                     .post()
                     .uri(apiUrl)
                     .header("X-OCR-SECRET", secretKey)

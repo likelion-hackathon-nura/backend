@@ -2,6 +2,7 @@ package org.example.nura.domain.schedule.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.nura.global.infra.ocr.DutyScheduleOcrClient;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleItemRequest;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleSaveRequest;
@@ -14,7 +15,6 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
-import org.example.nura.global.infra.ocr.ClovaOcrClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,7 +49,7 @@ public class DutyScheduleService {
     private final UserRepository userRepository;
 
     private final DutyScheduleAiService dutyScheduleAiService;
-    private final ClovaOcrClient clovaOcrClient;
+    private final DutyScheduleOcrClient dutyScheduleOcrClient;
     private final DutyScheduleOcrParser dutyScheduleOcrParser;
     private final ObjectMapper objectMapper;
 
@@ -59,7 +59,7 @@ public class DutyScheduleService {
             MultipartFile image
     ) {
         String rawJson =
-                clovaOcrClient.analyze(image);
+                dutyScheduleOcrClient.analyze(image);
 
         String structuredText =
                 dutyScheduleOcrParser.extractStructuredText(rawJson);
