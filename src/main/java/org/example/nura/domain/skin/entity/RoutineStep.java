@@ -54,7 +54,7 @@ public class RoutineStep extends BaseTimeEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "registered_cosmetic_id",
-            nullable = false,
+            nullable = true,
             foreignKey = @ForeignKey(
                     name = "fk_routine_step_registered_cosmetic"
             )
