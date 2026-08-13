@@ -20,13 +20,13 @@ public class OpenAiClient {
 
     private final RestClient.Builder restClientBuilder;
 
-    @Value("${openai.base-url}")
+    @Value("${ai.openai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
 
-    @Value("${openai.api-key}")
+    @Value("${ai.openai.api-key:}")
     private String apiKey;
 
-    @Value("${openai.model}")
+    @Value("${ai.openai.model:gpt-4o-mini}")
     private String model;
 
     public String chat(

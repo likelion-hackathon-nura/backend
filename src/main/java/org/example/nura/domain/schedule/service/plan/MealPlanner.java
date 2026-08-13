@@ -32,6 +32,7 @@ public class MealPlanner {
     public List<TimeInterval> plan(
             LocalDate date,
             MealPattern mealPattern,
+            List<TimeInterval> workIntervals,
             List<TimeInterval> occupiedIntervals
     ) {
         int mealCount =
@@ -49,6 +50,7 @@ public class MealPlanner {
                         date,
                         FIRST_MEAL_START,
                         FIRST_MEAL_END,
+                        workIntervals,
                         occupied
                 );
 
@@ -67,6 +69,7 @@ public class MealPlanner {
                         date,
                         SECOND_MEAL_START,
                         SECOND_MEAL_END,
+                        workIntervals,
                         occupied
                 );
 
@@ -95,13 +98,22 @@ public class MealPlanner {
             LocalDate date,
             LocalTime preferredStart,
             LocalTime preferredEnd,
+            List<TimeInterval> workIntervals,
             List<TimeInterval> occupiedIntervals
     ) {
         LocalDateTime rangeStart =
                 date.atTime(preferredStart);
 
         LocalDateTime rangeEnd =
-                date.atTime(preferredEnd);
+                capBeforeWorkStart(
+                        date,
+                        preferredEnd,
+                        workIntervals
+                );
+
+        if (!rangeStart.isBefore(rangeEnd)) {
+            return null;
+        }
 
         List<TimeInterval> freeSlots =
                 calculateFreeSlots(
@@ -131,6 +143,35 @@ public class MealPlanner {
                         )
                 )
                 .orElse(null);
+    }
+
+    private LocalDateTime capBeforeWorkStart(
+            LocalDate date,
+            LocalTime preferredEnd,
+            List<TimeInterval> workIntervals
+    ) {
+        LocalDateTime endAt =
+                date.atTime(preferredEnd);
+
+        LocalDateTime workStart =
+                workIntervals.stream()
+                        .map(TimeInterval::startAt)
+                        .filter(startAt ->
+                                startAt.toLocalDate().equals(date)
+                        )
+                        .min(Comparator.naturalOrder())
+                        .orElse(null);
+
+        if (workStart == null) {
+            return endAt;
+        }
+
+        LocalDateTime refreshLimit =
+                workStart.minusHours(1);
+
+        return endAt.isAfter(refreshLimit)
+                ? refreshLimit
+                : endAt;
     }
 
     private List<TimeInterval> calculateFreeSlots(

@@ -137,6 +137,7 @@ public class DailyPlanGenerationService {
                 mealPlanner.plan(
                         date,
                         context.mealPattern(),
+                        workIntervals,
                         occupied
                 );
 
@@ -160,6 +161,13 @@ public class DailyPlanGenerationService {
                 timeSlotCalculator.calculate(
                         date,
                         occupied
+                );
+
+        availableIntervals =
+                excludePreWorkRefreshTime(
+                        date,
+                        workIntervals,
+                        availableIntervals
                 );
 
         List<AvailableSlotContext> availableSlots =
@@ -318,6 +326,55 @@ public class DailyPlanGenerationService {
                         dayStart,
                         dayEnd
                 );
+    }
+
+    private List<TimeInterval> excludePreWorkRefreshTime(
+            LocalDate date,
+            List<TimeInterval> workIntervals,
+            List<TimeInterval> intervals
+    ) {
+        LocalDateTime dayStart =
+                date.atStartOfDay();
+
+        LocalDateTime dayEnd =
+                date.plusDays(1).atStartOfDay();
+
+        LocalDateTime workStart =
+                workIntervals.stream()
+                        .map(TimeInterval::startAt)
+                        .filter(startAt ->
+                                startAt.isAfter(dayStart)
+                                        && startAt.isBefore(dayEnd)
+                        )
+                        .min(LocalDateTime::compareTo)
+                        .orElse(null);
+
+        if (workStart == null) {
+            return intervals;
+        }
+
+        LocalDateTime refreshLimit =
+                workStart.minusHours(1);
+
+        return intervals.stream()
+                .map(interval -> {
+                    if (!interval.startAt().isBefore(refreshLimit)
+                            && interval.startAt().isBefore(workStart)) {
+                        return null;
+                    }
+
+                    if (interval.startAt().isBefore(refreshLimit)
+                            && interval.endAt().isAfter(refreshLimit)) {
+                        return new TimeInterval(
+                                interval.startAt(),
+                                refreshLimit
+                        );
+                    }
+
+                    return interval;
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     private TimeInterval clipCustomEventToDay(
