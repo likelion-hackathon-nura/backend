@@ -30,7 +30,10 @@ public enum ErrorCode {
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "A004", "접근 권한이 없습니다."),
     TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "A005", "인증 토큰이 존재하지 않습니다."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "A006", "이미 가입된 이메일입니다."),
-    INVALID_LOGIN_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A007", "이메일 또는 비밀번호가 올바르지 않습니다.");
+    INVALID_LOGIN_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A007", "이메일 또는 비밀번호가 올바르지 않습니다."),
+
+    // External
+    EXTERNAL_API_ERROR(HttpStatus.BAD_GATEWAY, "E001", "외부 서비스 오류가 발생했습니다.");
 
     private final HttpStatus status;
     private final String code;

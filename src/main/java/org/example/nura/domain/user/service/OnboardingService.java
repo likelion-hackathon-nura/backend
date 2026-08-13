@@ -33,7 +33,7 @@ public class OnboardingService {
             Long userId,
             OnboardingRequest request
     ) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() ->
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
