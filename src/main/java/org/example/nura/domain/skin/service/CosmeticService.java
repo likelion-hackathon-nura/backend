@@ -10,8 +10,7 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
-import org.example.nura.global.infra.clova.ClovaOcrService;
-import org.example.nura.global.infra.s3.S3Service;
+import org.example.nura.global.infra.clova.ClovaOcrClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,29 +21,24 @@ public class CosmeticService {
 
     private final RegisteredCosmeticRepository registeredCosmeticRepository;
     private final UserRepository userRepository;
-    private final S3Service s3Service;
-    private final ClovaOcrService clovaOcrService;
+    private final ClovaOcrClient clovaOcrClient; // S3 대신 MultipartFile을 전달받는 Client 사용
     private final OpenAiService openAiService;
 
     /**
      * 화장품 뒷면 사진 OCR 분석 (Clova OCR + OpenAI 파싱)
-     * DB 트랜잭션 바깥에서 외부 API 통신 실행
+     * S3 저장 없이 MultipartFile을 일회성 메모리 데이터로 직접 분석
      */
     public CosmeticOcrResponse analyzeOcr(MultipartFile photo) {
-        // 1. S3 이미지 업로드
-        String photoUrl = s3Service.upload(photo, "cosmetics");
+        // 1. Clova OCR로 MultipartFile 직접 전달하여 Raw 텍스트 추출
+        String rawText = clovaOcrClient.analyze(photo);
 
-        // 2. Clova OCR로 Raw 텍스트 추출
-        String rawText = clovaOcrService.extractTextFromUrl(photoUrl);
-
-        // 3. GPT-4o-mini로 전성분/핵심성분 추출 및 정제
+        // 2. GPT-4o-mini로 전성분/핵심성분 추출 및 정제
         OpenAiService.IngredientParseResult parseResult = openAiService.parseIngredients(rawText);
 
-        // 4. 결과 반환
+        // 3. 결과 반환
         return new CosmeticOcrResponse(
                 parseResult.cosmeticIngredients(),
-                parseResult.coreIngredients(),
-                photoUrl
+                parseResult.coreIngredients()
         );
     }
 

@@ -19,8 +19,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.time.LocalDate;
 
 @Service
@@ -90,8 +88,7 @@ public class CheckinService {
         int tightnessScore = request.tightness().toScore();
         int rednessScore = request.redness().toScore();
 
-        // 2. S3 업로드 (DB 트랜잭션 밖)
-        String photoUrl = uploadPhotoIfPresent(request.photo());
+        String photoUrl = null;
 
         // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 외부 통신 중 Connection 점유 없음!)
         SkinAnalysisService.AnalysisResult analysisResult =
@@ -188,12 +185,6 @@ public class CheckinService {
         }
     }
 
-    private String uploadPhotoIfPresent(MultipartFile photo) {
-        if (photo == null || photo.isEmpty()) {
-            return null;
-        }
-        return null;
-    }
 
     private SkinAnalysisLevel defaultUnknown(
             SkinAnalysisLevel value
