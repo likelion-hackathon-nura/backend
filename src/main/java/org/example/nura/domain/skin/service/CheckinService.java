@@ -162,7 +162,6 @@ public class CheckinService {
                     defaultUnknown(savedCheckin.getAnalyzedOiliness()),
                     defaultUnknown(savedCheckin.getAnalyzedTrouble()),
                     savedCheckin.getAiComment(),
-                    savedCheckin.getPhotoUrl(),
                     savedCheckin.getCreatedAt()
             );
         } catch (DataIntegrityViolationException e) {
