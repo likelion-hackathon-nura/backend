@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.schedule.dto.ai.RefreshPlanAiRequest;
 import org.example.nura.domain.schedule.dto.ai.RefreshPlanAiResponse;
+import org.example.nura.domain.schedule.dto.ai.SkinRecoveryPlan;
 import org.example.nura.domain.schedule.prompt.DailyRefreshPrompt;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
@@ -12,6 +13,8 @@ import org.example.nura.global.infra.openai.OpenAiClient;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -36,23 +39,24 @@ public class DailyRefreshAiService {
                             userPrompt
                     );
 
-            RefreshPlanAiResponse response = parseResponse(rawResponse);
-            refreshPlanValidator.validate(request, response);
+            RefreshPlanAiResponse response =
+                    parseResponse(rawResponse);
+
+            refreshPlanValidator.validate(
+                    request,
+                    response
+            );
+
             return response;
 
-        } catch (BaseException e) {
-            throw e;
-
         } catch (Exception e) {
-            log.error(
-                    "Refresh AI 추천 처리 중 오류",
+
+            log.warn(
+                    "Refresh AI 추천 실패 - fallback 계획 사용",
                     e
             );
 
-            throw new BaseException(
-                    ErrorCode.EXTERNAL_API_ERROR,
-                    "회복 시간 추천에 실패했습니다."
-            );
+            return createFallbackResponse();
         }
     }
 
@@ -97,5 +101,16 @@ public class DailyRefreshAiService {
                     "회복 시간 추천 결과를 해석할 수 없습니다."
             );
         }
+    }
+
+    private RefreshPlanAiResponse createFallbackResponse() {
+        return new RefreshPlanAiResponse(
+                List.of(),
+                new SkinRecoveryPlan(
+                        false,
+                        null,
+                        null
+                )
+        );
     }
 }
