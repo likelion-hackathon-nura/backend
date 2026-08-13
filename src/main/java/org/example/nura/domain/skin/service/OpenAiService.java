@@ -140,9 +140,13 @@ public class OpenAiService {
         return "오늘 피부 상태에 맞는 균형 루틴을 권장합니다.";
     }
 
-    // OpenAiService.java 내부에 추가
-
     public IngredientParseResult parseIngredients(String rawText) {
+        // API Key 검사 및 빈 텍스트 인풋 Fallback
+        if (openAiApiKey == null || openAiApiKey.isBlank()) {
+            log.warn("[OpenAiService] OpenAI API Key가 설정되지 않았습니다. 원본 텍스트를 반환합니다.");
+            return new IngredientParseResult(rawText, "없음");
+        }
+
         if (rawText == null || rawText.isBlank()) {
             return new IngredientParseResult("성분 정보를 읽을 수 없습니다.", "없음");
         }

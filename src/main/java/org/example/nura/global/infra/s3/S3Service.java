@@ -22,18 +22,13 @@ public class S3Service {
     @Value("${spring.cloud.aws.s3.bucket}")
     private String bucket;
 
-    /**
-     * S3에 파일 업로드 후 접근 가능한 URL 반환
-     * @param multipartFile 업로드할 파일
-     * @param dirName 저장할 폴더 경로 (예: "cosmetics", "checkin")
-     */
     public String upload(MultipartFile multipartFile, String dirName) {
         if (multipartFile == null || multipartFile.isEmpty()) {
             throw new BaseException(ErrorCode.INVALID_INPUT_VALUE, "업로드할 파일이 없습니다.");
         }
 
-        String originalFilename = multipartFile.getOriginalFilename();
-        String storeFileName = dirName + "/" + UUID.randomUUID() + "_" + originalFilename;
+        String extension = extractExtension(multipartFile.getOriginalFilename());
+        String storeFileName = dirName + "/" + UUID.randomUUID() + extension;
 
         try (InputStream inputStream = multipartFile.getInputStream()) {
             ObjectMetadata metadata = ObjectMetadata.builder()
@@ -45,5 +40,12 @@ public class S3Service {
         } catch (IOException e) {
             throw new BaseException(ErrorCode.INTERNAL_SERVER_ERROR, "S3 파일 업로드에 실패했습니다.");
         }
+    }
+
+    private String extractExtension(String originalFilename) {
+        if (originalFilename == null || !originalFilename.contains(".")) {
+            return ".jpg"; // 기본 확장자
+        }
+        return originalFilename.substring(originalFilename.lastIndexOf("."));
     }
 }

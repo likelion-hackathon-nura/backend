@@ -18,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class CosmeticService {
 
     private final RegisteredCosmeticRepository registeredCosmeticRepository;
@@ -29,6 +28,7 @@ public class CosmeticService {
 
     /**
      * 화장품 뒷면 사진 OCR 분석 (Clova OCR + OpenAI 파싱)
+     * DB 트랜잭션 바깥에서 외부 API 통신 실행
      */
     public CosmeticOcrResponse analyzeOcr(MultipartFile photo) {
         // 1. S3 이미지 업로드

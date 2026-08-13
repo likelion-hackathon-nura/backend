@@ -5,9 +5,11 @@ import org.example.nura.domain.skin.dto.response.FastApiOcrResponse;
 import org.example.nura.domain.skin.dto.response.FastApiSkinAnalysisResponse;
 import org.example.nura.domain.skin.entity.enums.CosmeticType;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Slf4j
@@ -17,14 +19,16 @@ public class FastApiClient {
     private final RestClient restClient;
 
     public FastApiClient(@Value("${fastapi.url:http://localhost:8000}") String fastApiUrl) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
+
         this.restClient = RestClient.builder()
                 .baseUrl(fastApiUrl)
+                .requestFactory(requestFactory)
                 .build();
     }
 
-    /**
-     * FastAPI 서버에 S3 이미지 URL을 보내 OCR 분석 요청
-     */
     public FastApiOcrResponse analyzeCosmeticOcr(String photoUrl) {
         try {
             return restClient.post()
@@ -33,8 +37,7 @@ public class FastApiClient {
                     .retrieve()
                     .body(FastApiOcrResponse.class);
         } catch (Exception e) {
-            log.error("FastAPI OCR 호출 실패: {}", e.getMessage());
-            // FastAPI 미기동 시 백엔드가 터지지 않도록 안전장치(Fallback) 제공
+            log.error("FastAPI OCR 호출 실패", e);
             return new FastApiOcrResponse(
                     "이니스프리",
                     "그린티 씨드 세럼",
@@ -45,9 +48,6 @@ public class FastApiClient {
         }
     }
 
-    /**
-     * FastAPI 서버에 피부 사진 S3 URL을 보내 피부 상태 분석 요청
-     */
     public FastApiSkinAnalysisResponse analyzeSkin(String photoUrl) {
         try {
             return restClient.post()
@@ -56,12 +56,8 @@ public class FastApiClient {
                     .retrieve()
                     .body(FastApiSkinAnalysisResponse.class);
         } catch (Exception e) {
-            log.error("FastAPI 피부 분석 호출 실패: {}", e.getMessage());
-            // FastAPI 미기동 시 백엔드가 안 터지도록 기본 폴백 값 제공
+            log.error("FastAPI 피부 분석 호출 실패", e);
             return new FastApiSkinAnalysisResponse(30, 2);
         }
     }
-
-
-
 }

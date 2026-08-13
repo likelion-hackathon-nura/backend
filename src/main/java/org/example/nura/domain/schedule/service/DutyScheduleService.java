@@ -14,7 +14,7 @@ import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
-import org.example.nura.global.infra.ocr.ClovaOcrClient;
+import org.example.nura.global.infra.clova.ClovaOcrClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
