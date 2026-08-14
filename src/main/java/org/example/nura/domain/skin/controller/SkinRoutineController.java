@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "3분 회복 루틴", description = "체크인 기반 루틴 생성/조회 API")
 @RestController
-@RequestMapping("/api/v1/skin-routines")
+@RequestMapping("/api/skin-routines")
 @RequiredArgsConstructor
 public class SkinRoutineController {
 

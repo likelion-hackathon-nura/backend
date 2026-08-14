@@ -16,6 +16,7 @@ import java.util.List;
 public class MealPlanner {
 
     private static final int MEAL_DURATION_MINUTES = 30;
+    private static final int MIN_MEAL_GAP_MINUTES = 180;
     private static final int WORK_BUFFER_MINUTES = 90;
 
     private static final LocalTime FIRST_MEAL_START =
@@ -67,7 +68,11 @@ public class MealPlanner {
 
         if (firstMeal != null) {
             meals.add(firstMeal);
-            occupied.add(firstMeal);
+            occupied.add(
+                    createMealSpacingInterval(
+                            firstMeal
+                    )
+            );
         }
 
         if (mealCount == 1) {
@@ -86,7 +91,11 @@ public class MealPlanner {
 
         if (secondMeal != null) {
             meals.add(secondMeal);
-            occupied.add(secondMeal);
+            occupied.add(
+                    createMealSpacingInterval(
+                            secondMeal
+                    )
+            );
         }
 
         return meals;
@@ -273,6 +282,17 @@ public class MealPlanner {
         }
 
         return remaining;
+    }
+
+    private TimeInterval createMealSpacingInterval(
+            TimeInterval mealInterval
+    ) {
+        return new TimeInterval(
+                mealInterval.startAt()
+                        .minusMinutes(MIN_MEAL_GAP_MINUTES),
+                mealInterval.endAt()
+                        .plusMinutes(MIN_MEAL_GAP_MINUTES)
+        );
     }
 
     private LocalDateTime capBeforeWorkStart(
