@@ -22,7 +22,7 @@ import java.time.LocalDate;
 
 @Tag(name = "체크인", description = "체크인 생성 API")
 @RestController
-@RequestMapping("/api/v1/checkin")
+@RequestMapping("/api/checkin")
 @RequiredArgsConstructor
 public class CheckinController {
 

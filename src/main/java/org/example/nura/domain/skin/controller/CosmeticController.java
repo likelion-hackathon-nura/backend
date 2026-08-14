@@ -23,7 +23,7 @@ import java.util.List;
 
 @Tag(name = "사용 화장품 관리", description = "사용자 등록 화장품 OCR 분석 및 등록 API")
 @RestController
-@RequestMapping("/api/v1/cosmetics")
+@RequestMapping("/api/cosmetics")
 @RequiredArgsConstructor
 public class CosmeticController {
 
