@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.schedule.dto.request.CustomEventCheckRequest;
+import org.example.nura.domain.schedule.dto.response.CustomEventCreateResponse;
 import org.example.nura.domain.schedule.dto.response.CustomEventCheckResponse;
 import org.example.nura.domain.schedule.service.CustomEventService;
 import org.example.nura.global.common.ApiResponse;
@@ -44,6 +45,27 @@ public class CustomEventController {
 
         return ApiResponse.success(
                 message,
+                response
+        );
+    }
+
+    @Operation(
+            summary = "일정 등록",
+            description = "일정을 저장하고, 오늘인 경우 홈 TimeBlock을 즉시 갱신합니다."
+    )
+    @PostMapping
+    public ApiResponse<CustomEventCreateResponse> create(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody CustomEventCheckRequest request
+    ) {
+        CustomEventCreateResponse response =
+                customEventService.create(
+                        userId,
+                        request
+                );
+
+        return ApiResponse.success(
+                "일정이 등록되었습니다.",
                 response
         );
     }

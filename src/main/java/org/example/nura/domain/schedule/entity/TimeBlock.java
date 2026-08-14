@@ -130,6 +130,18 @@ public class TimeBlock extends BaseTimeEntity {
         this.completed = completed;
     }
 
+    public void updateCustomEvent(
+            CustomEvent customEvent
+    ) {
+        if (source != TimeBlockSource.MANUAL) {
+            throw new IllegalArgumentException(
+                    "수동 타임블록만 CustomEvent를 변경할 수 있습니다."
+            );
+        }
+
+        this.customEvent = customEvent;
+    }
+
     private static void validateTime(
             LocalDateTime startAt,
             LocalDateTime endAt
