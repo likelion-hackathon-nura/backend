@@ -29,6 +29,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DailyPlanGenerationService {
 
+    private static final int WORK_BUFFER_MINUTES = 90;
+
     private final WorkIntervalCalculator workIntervalCalculator;
     private final SleepPlanner sleepPlanner;
     private final MealPlanner mealPlanner;
@@ -163,7 +165,7 @@ public class DailyPlanGenerationService {
                 );
 
         availableIntervals =
-                excludePreWorkRefreshTime(
+                excludeWorkBufferTime(
                         date,
                         workIntervals,
                         availableIntervals
@@ -327,53 +329,74 @@ public class DailyPlanGenerationService {
                 );
     }
 
-    private List<TimeInterval> excludePreWorkRefreshTime(
+    private List<TimeInterval> excludeWorkBufferTime(
             LocalDate date,
             List<TimeInterval> workIntervals,
             List<TimeInterval> intervals
     ) {
-        LocalDateTime dayStart =
-                date.atStartOfDay();
-
-        LocalDateTime dayEnd =
-                date.plusDays(1).atStartOfDay();
-
-        LocalDateTime workStart =
-                workIntervals.stream()
-                        .map(TimeInterval::startAt)
-                        .filter(startAt ->
-                                startAt.isAfter(dayStart)
-                                        && startAt.isBefore(dayEnd)
-                        )
-                        .min(LocalDateTime::compareTo)
-                        .orElse(null);
-
-        if (workStart == null) {
+        if (workIntervals.isEmpty()) {
             return intervals;
         }
 
-        LocalDateTime refreshLimit =
-                workStart.minusMinutes(90);
+        List<TimeInterval> availableIntervals =
+                intervals;
 
-        return intervals.stream()
-                .map(interval -> {
-                    if (!interval.startAt().isBefore(refreshLimit)
-                            && interval.startAt().isBefore(workStart)) {
-                        return null;
-                    }
+        for (TimeInterval workInterval : workIntervals) {
+            LocalDateTime blockedStart =
+                    workInterval.startAt()
+                            .minusMinutes(WORK_BUFFER_MINUTES);
 
-                    if (interval.startAt().isBefore(refreshLimit)
-                            && interval.endAt().isAfter(refreshLimit)) {
-                        return new TimeInterval(
-                                interval.startAt(),
-                                refreshLimit
-                        );
-                    }
+            LocalDateTime blockedEnd =
+                    workInterval.endAt()
+                            .plusMinutes(WORK_BUFFER_MINUTES);
 
-                    return interval;
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
+            availableIntervals =
+                    availableIntervals.stream()
+                            .flatMap(interval ->
+                                    excludeBlockedInterval(
+                                            interval,
+                                            blockedStart,
+                                            blockedEnd
+                                    ).stream()
+                            )
+                            .toList();
+        }
+
+        return availableIntervals;
+    }
+
+    private List<TimeInterval> excludeBlockedInterval(
+            TimeInterval interval,
+            LocalDateTime blockedStart,
+            LocalDateTime blockedEnd
+    ) {
+        if (!interval.startAt().isBefore(blockedEnd)
+                || !interval.endAt().isAfter(blockedStart)) {
+            return List.of(interval);
+        }
+
+        List<TimeInterval> remaining =
+                new ArrayList<>();
+
+        if (interval.startAt().isBefore(blockedStart)) {
+            remaining.add(
+                    new TimeInterval(
+                            interval.startAt(),
+                            blockedStart
+                    )
+            );
+        }
+
+        if (interval.endAt().isAfter(blockedEnd)) {
+            remaining.add(
+                    new TimeInterval(
+                            blockedEnd,
+                            interval.endAt()
+                    )
+            );
+        }
+
+        return remaining;
     }
 
     private TimeInterval clipCustomEventToDay(
