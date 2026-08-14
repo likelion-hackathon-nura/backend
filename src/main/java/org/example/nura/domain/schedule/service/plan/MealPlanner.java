@@ -16,6 +16,8 @@ import java.util.List;
 public class MealPlanner {
 
     private static final int MEAL_DURATION_MINUTES = 30;
+    private static final int MIN_MEAL_GAP_MINUTES = 180;
+    private static final int WORK_BUFFER_MINUTES = 90;
 
     private static final LocalTime FIRST_MEAL_START =
             LocalTime.of(11, 0);
@@ -66,7 +68,11 @@ public class MealPlanner {
 
         if (firstMeal != null) {
             meals.add(firstMeal);
-            occupied.add(firstMeal);
+            occupied.add(
+                    createMealSpacingInterval(
+                            firstMeal
+                    )
+            );
         }
 
         if (mealCount == 1) {
@@ -85,7 +91,11 @@ public class MealPlanner {
 
         if (secondMeal != null) {
             meals.add(secondMeal);
-            occupied.add(secondMeal);
+            occupied.add(
+                    createMealSpacingInterval(
+                            secondMeal
+                    )
+            );
         }
 
         return meals;
@@ -117,6 +127,12 @@ public class MealPlanner {
                         fallbackStart,
                         dayEnd,
                         occupiedIntervals
+                );
+
+        freeSlots =
+                excludePreWorkBufferTime(
+                        freeSlots,
+                        workIntervals
                 );
 
         return freeSlots.stream()
@@ -171,15 +187,13 @@ public class MealPlanner {
                         occupiedIntervals
                 );
 
+        freeSlots =
+                excludePreWorkBufferTime(
+                        freeSlots,
+                        workIntervals
+                );
+
         return freeSlots.stream()
-                // 출근 1시간 전에는 식사 배치하지 않음
-                .filter(slot ->
-                        isBeforePreWorkLimit(
-                                date,
-                                slot,
-                                workIntervals
-                        )
-                )
                 .filter(slot ->
                         !slot.startAt()
                                 .plusMinutes(MEAL_DURATION_MINUTES)
@@ -202,50 +216,83 @@ public class MealPlanner {
                 .orElse(null);
     }
 
-    private boolean isBeforePreWorkLimit(
-            LocalDate date,
-            TimeInterval slot,
+    private List<TimeInterval> excludePreWorkBufferTime(
+            List<TimeInterval> intervals,
             List<TimeInterval> workIntervals
     ) {
-        LocalDateTime workStart =
-                findTodayWorkStart(date, workIntervals);
-
-        // OFF / 오늘 새로 시작하는 근무 없음
-        if (workStart == null) {
-            return true;
+        if (workIntervals.isEmpty()) {
+            return intervals;
         }
 
-        LocalDateTime preWorkLimit =
-                workStart.minusMinutes(90);
+        List<TimeInterval> availableIntervals =
+                intervals;
 
-        // 근무 시작 이후 슬롯은 퇴근 후일 수 있으므로 허용
-        if (!slot.startAt().isBefore(workStart)) {
-            return true;
+        for (TimeInterval workInterval : workIntervals) {
+            LocalDateTime blockedStart =
+                    workInterval.startAt()
+                            .minusMinutes(WORK_BUFFER_MINUTES);
+
+            LocalDateTime blockedEnd =
+                    workInterval.startAt();
+
+            availableIntervals =
+                    availableIntervals.stream()
+                            .flatMap(interval ->
+                                    excludeBlockedInterval(
+                                            interval,
+                                            blockedStart,
+                                            blockedEnd
+                                    ).stream()
+                            )
+                            .toList();
         }
 
-        // 출근 전이라면 출근 90분 전까지만 식사 가능
-        return !slot.endAt().isAfter(preWorkLimit);
+        return availableIntervals;
     }
 
-    private LocalDateTime findTodayWorkStart(
-            LocalDate date,
-            List<TimeInterval> workIntervals
+    private List<TimeInterval> excludeBlockedInterval(
+            TimeInterval interval,
+            LocalDateTime blockedStart,
+            LocalDateTime blockedEnd
     ) {
-        LocalDateTime dayStart =
-                date.atStartOfDay();
+        if (!interval.startAt().isBefore(blockedEnd)
+                || !interval.endAt().isAfter(blockedStart)) {
+            return List.of(interval);
+        }
 
-        LocalDateTime dayEnd =
-                date.plusDays(1).atStartOfDay();
+        List<TimeInterval> remaining =
+                new ArrayList<>();
 
-        return workIntervals.stream()
-                .map(TimeInterval::startAt)
-                // 00:00 시작은 전날 N의 이어지는 근무이므로 제외
-                .filter(startAt ->
-                        startAt.isAfter(dayStart)
-                                && startAt.isBefore(dayEnd)
-                )
-                .min(Comparator.naturalOrder())
-                .orElse(null);
+        if (interval.startAt().isBefore(blockedStart)) {
+            remaining.add(
+                    new TimeInterval(
+                            interval.startAt(),
+                            blockedStart
+                    )
+            );
+        }
+
+        if (interval.endAt().isAfter(blockedEnd)) {
+            remaining.add(
+                    new TimeInterval(
+                            blockedEnd,
+                            interval.endAt()
+                    )
+            );
+        }
+
+        return remaining;
+    }
+
+    private TimeInterval createMealSpacingInterval(
+            TimeInterval mealInterval
+    ) {
+        return new TimeInterval(
+                mealInterval.startAt()
+                        .minusMinutes(MIN_MEAL_GAP_MINUTES),
+                mealInterval.endAt()
+                        .plusMinutes(MIN_MEAL_GAP_MINUTES)
+        );
     }
 
     private LocalDateTime capBeforeWorkStart(

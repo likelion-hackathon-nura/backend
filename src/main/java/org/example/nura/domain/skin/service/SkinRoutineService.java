@@ -25,6 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -36,12 +37,12 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class SkinRoutineService {
 
     private final SkinRoutineRepository skinRoutineRepository;
     private final RoutineStepRepository routineStepRepository;
     private final RegisteredCosmeticRepository registeredCosmeticRepository;
+    private final TransactionTemplate transactionTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -81,13 +82,6 @@ public class SkinRoutineService {
         List<RegisteredCosmetic> cosmetics =
                 registeredCosmeticRepository.findByUserId(userId);
 
-        if (cosmetics.isEmpty()) {
-            throw new BaseException(
-                    ErrorCode.RESOURCE_NOT_FOUND,
-                    "등록된 화장품이 없어 루틴을 생성할 수 없습니다."
-            );
-        }
-
         int stepCount = resolveStepCount(routine.getRecoveryLevel());
         List<SkinCareType> careTypes = suggestCareTypes(checkin, stepCount);
 
@@ -109,14 +103,15 @@ public class SkinRoutineService {
             stepDtos.add(new StepSaveDto(stepOrder, careType, cosmetic, content));
         }
 
-        // 2. DB 저장은 짧은 트랜잭션 안에서 수행
-        return saveRoutineStepsTransaction(routine, stepDtos);
+        // 2. DB 저장 (TransactionTemplate을 사용하여 쓰기 트랜잭션 수행)
+        return transactionTemplate.execute(status ->
+                saveRoutineStepsTransaction(routine, stepDtos)
+        );
     }
 
     /**
-     * DB 저장 및 기존 스텝 갱신 전용 단기 트랜잭션
+     * DB 저장 및 기존 스텝 갱신 로직 (TransactionTemplate 내부에서 호출됨)
      */
-    @Transactional
     public SkinRoutineResponse saveRoutineStepsTransaction(
             SkinRoutine routine,
             List<StepSaveDto> stepDtos
@@ -132,7 +127,7 @@ public class SkinRoutineService {
                         dto.content().title(),
                         dto.content().description(),
                         dto.content().precautions(),
-                        dto.content().recommendedIngredients(),
+                        formatToJsonArray(dto.content().recommendedIngredients()), // 👈 이 부분 수정!
                         dto.content().reason()
                 ))
                 .toList();
@@ -142,6 +137,37 @@ public class SkinRoutineService {
         return toResponse(routine, steps);
     }
 
+    /**
+     * 일반 문자열을 MySQL JSON 컬럼 규격에 맞는 JSON Array 문자열로 변환 (예: ["성분1", "성분2"])
+     */
+    private String formatToJsonArray(String rawIngredients) {
+        if (rawIngredients == null || rawIngredients.isBlank()) {
+            return "[\"기본 보습 성분\"]";
+        }
+
+        String trimmed = rawIngredients.trim();
+        // 이미 JSON 배열 형태([ ... ])인 경우 그대로 반환
+        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+            return trimmed;
+        }
+
+        // 콤마(,)나 슬래시(/)로 분리하여 JSON 배열 형태로 변환
+        String[] items = trimmed.split("[,/]");
+        List<String> list = new ArrayList<>();
+        for (String item : items) {
+            if (!item.isBlank()) {
+                list.add(item.trim());
+            }
+        }
+
+        try {
+            return objectMapper.writeValueAsString(list);
+        } catch (Exception e) {
+            return "[\"" + trimmed.replace("\"", "\\\"") + "\"]";
+        }
+    }
+
+    @Transactional(readOnly = true)
     public SkinRoutineResponse getTodayRoutine(Long userId) {
         SkinRoutine routine = findTodayRoutineEntity(userId);
         List<RoutineStep> steps =
@@ -214,7 +240,6 @@ public class SkinRoutineService {
         while (careTypes.size() < stepCount) {
             careTypes.add(SkinCareType.SOOTHING);
         }
-
         return careTypes.subList(0, stepCount);
     }
 
@@ -222,12 +247,16 @@ public class SkinRoutineService {
             List<RegisteredCosmetic> cosmetics,
             SkinCareType careType
     ) {
+        if (cosmetics == null || cosmetics.isEmpty()) {
+            return null;
+        }
+
         List<CosmeticType> preferredTypes = preferredCosmeticTypes(careType);
 
         return cosmetics.stream()
                 .filter(cosmetic -> preferredTypes.contains(cosmetic.getCosmeticType()))
                 .findFirst()
-                .orElse(cosmetics.get(0));
+                .orElse(null);
     }
 
     private List<CosmeticType> preferredCosmeticTypes(SkinCareType careType) {
@@ -252,12 +281,15 @@ public class SkinRoutineService {
         }
 
         try {
+            String cosmeticName = (cosmetic != null) ? cosmetic.getCosmeticName() : "소장 중인 기본 " + careType.name() + " 제품";
+            String cosmeticType = (cosmetic != null) ? cosmetic.getCosmeticType().name() : "자유 선택";
+
             String prompt = "다음 정보를 기반으로 3분 회복 루틴의 한 단계를 JSON으로 작성하세요."
                     + "\n반환 형식: {\"title\":\"...\",\"description\":\"...\",\"precautions\":\"...\",\"recommended_ingredients\":\"...\",\"reason\":\"...\"}"
                     + "\n- step_order: " + stepOrder
                     + "\n- care_type: " + careType
-                    + "\n- cosmetic_name: " + cosmetic.getCosmeticName()
-                    + "\n- cosmetic_type: " + cosmetic.getCosmeticType()
+                    + "\n- cosmetic_name: " + cosmeticName
+                    + "\n- cosmetic_type: " + cosmeticType
                     + "\n- acne_level: " + safeLevel(checkin.getAnalyzedTrouble())
                     + "\n- redness_level: " + safeLevel(checkin.getAnalyzedRedness())
                     + "\n- moisture_level: " + safeLevel(checkin.getAnalyzedMoisture())
@@ -266,8 +298,9 @@ public class SkinRoutineService {
             Map<String, Object> payload = Map.of(
                     "model", openAiModel,
                     "temperature", 0.4,
+                    "response_format", Map.of("type", "json_object"),
                     "messages", List.of(
-                            Map.of("role", "system", "content", "너는 스킨케어 루틴 코치다. 한국어로 간결하게 답한다."),
+                            Map.of("role", "system", "content", "너는 스킨케어 루틴 코치다. 반드시 요청된 JSON 포맷으로만 한국어로 간결하게 답한다."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
@@ -297,12 +330,13 @@ public class SkinRoutineService {
             }
 
             JsonNode contentJson = objectMapper.readTree(content);
+            String defaultIngredients = (cosmetic != null) ? cosmetic.getCoreIngredients() : "진정/보습 관련 성분";
 
             return new LlmStepContent(
                     readOrDefault(contentJson, "title", fallbackTitle(careType, stepOrder)),
                     readOrDefault(contentJson, "description", fallbackDescription(careType, cosmetic)),
                     readOrDefault(contentJson, "precautions", "눈가를 피해 부드럽게 사용해주세요."),
-                    readOrDefault(contentJson, "recommended_ingredients", cosmetic.getCoreIngredients()),
+                    readOrDefault(contentJson, "recommended_ingredients", defaultIngredients),
                     readOrDefault(contentJson, "reason", fallbackReason(careType))
             );
         } catch (Exception e) {
@@ -325,11 +359,13 @@ public class SkinRoutineService {
             RegisteredCosmetic cosmetic,
             int stepOrder
     ) {
+        String ingredients = (cosmetic != null) ? cosmetic.getCoreIngredients() : "수분 및 진정 성분";
+
         return new LlmStepContent(
                 fallbackTitle(careType, stepOrder),
                 fallbackDescription(careType, cosmetic),
                 "눈가를 피해 자극 없이 사용해주세요.",
-                cosmetic.getCoreIngredients(),
+                ingredients,
                 fallbackReason(careType)
         );
     }
@@ -345,7 +381,10 @@ public class SkinRoutineService {
             SkinCareType careType,
             RegisteredCosmetic cosmetic
     ) {
-        return cosmetic.getCosmeticName() + "로 " + careType.name() + " 중심 케어를 진행합니다.";
+        if (cosmetic != null) {
+            return cosmetic.getCosmeticName() + "로 " + careType.name() + " 중심 케어를 진행합니다.";
+        }
+        return careType.name() + " 효과가 있는 가벼운 기본 화장품을 사용해 케어해 주세요.";
     }
 
     private String fallbackReason(SkinCareType careType) {
@@ -369,20 +408,24 @@ public class SkinRoutineService {
             List<RoutineStep> steps
     ) {
         List<SkinRoutineStepResponse> stepResponses = steps.stream()
-                .map(step -> new SkinRoutineStepResponse(
-                        step.getStepOrder(),
-                        step.getCareType(),
-                        step.getTitle(),
-                        step.getDescription(),
-                        step.getPrecautions(),
-                        step.getRecommendedIngredients(),
-                        step.getReason(),
-                        step.getRegisteredCosmetic().getId(),
-                        step.getRegisteredCosmetic().getCosmeticBrand(),
-                        step.getRegisteredCosmetic().getCosmeticName(),
-                        step.getRegisteredCosmetic().getCosmeticType(),
-                        step.getRegisteredCosmetic().getCosmeticUrl()
-                ))
+                .map(step -> {
+                    RegisteredCosmetic cosmetic = step.getRegisteredCosmetic();
+
+                    return new SkinRoutineStepResponse(
+                            step.getStepOrder(),
+                            step.getCareType(),
+                            step.getTitle(),
+                            step.getDescription(),
+                            step.getPrecautions(),
+                            step.getRecommendedIngredients(),
+                            step.getReason(),
+                            cosmetic != null ? cosmetic.getId() : null,
+                            cosmetic != null ? cosmetic.getCosmeticBrand() : null,
+                            cosmetic != null ? cosmetic.getCosmeticName() : "추천 제품 사용",
+                            cosmetic != null ? cosmetic.getCosmeticType() : null,
+                            cosmetic != null ? cosmetic.getCosmeticUrl() : null
+                    );
+                })
                 .toList();
 
         return new SkinRoutineResponse(
