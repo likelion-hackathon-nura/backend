@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.schedule.dto.request.CustomEventCheckRequest;
 import org.example.nura.domain.schedule.dto.response.CustomEventCreateResponse;
 import org.example.nura.domain.schedule.dto.response.CustomEventCheckResponse;
+import org.example.nura.domain.schedule.dto.response.CustomEventRecommendationResponse;
 import org.example.nura.domain.schedule.service.CustomEventService;
 import org.example.nura.global.common.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -66,6 +67,27 @@ public class CustomEventController {
 
         return ApiResponse.success(
                 "일정이 등록되었습니다.",
+                response
+        );
+    }
+
+    @Operation(
+            summary = "추천 일정 조회",
+            description = "일정과 같은 길이의 추천 가능한 시간대를 최대 3개까지 반환합니다."
+    )
+    @PostMapping("/recommendations")
+    public ApiResponse<CustomEventRecommendationResponse> recommendations(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody CustomEventCheckRequest request
+    ) {
+        CustomEventRecommendationResponse response =
+                customEventService.recommendations(
+                        userId,
+                        request
+                );
+
+        return ApiResponse.success(
+                "추천 일정을 조회했습니다.",
                 response
         );
     }

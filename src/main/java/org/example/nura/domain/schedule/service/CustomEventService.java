@@ -2,24 +2,34 @@ package org.example.nura.domain.schedule.service;
 
 import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.schedule.dto.context.DailyPlanContext;
+import org.example.nura.domain.schedule.dto.context.TimeInterval;
 import org.example.nura.domain.schedule.dto.request.CustomEventCheckRequest;
 import org.example.nura.domain.schedule.dto.response.CustomEventCreateResponse;
 import org.example.nura.domain.schedule.dto.response.CustomEventCheckResponse;
 import org.example.nura.domain.schedule.dto.response.CustomEventCheckStatus;
+import org.example.nura.domain.schedule.dto.response.CustomEventRecommendationItemResponse;
+import org.example.nura.domain.schedule.dto.response.CustomEventRecommendationResponse;
+import org.example.nura.domain.schedule.dto.response.CustomEventRecommendationType;
 import org.example.nura.domain.schedule.dto.plan.PlannedTimeBlock;
 import org.example.nura.domain.schedule.entity.CustomEvent;
 import org.example.nura.domain.schedule.entity.DailyTimeAllocation;
+import org.example.nura.domain.schedule.entity.DutySchedule;
 import org.example.nura.domain.schedule.entity.TimeBlock;
 import org.example.nura.domain.schedule.entity.enums.TimeBlockSource;
 import org.example.nura.domain.schedule.entity.enums.TimeCategory;
+import org.example.nura.domain.schedule.entity.enums.ShiftType;
 import org.example.nura.domain.schedule.repository.CustomEventRepository;
 import org.example.nura.domain.schedule.repository.DailyTimeAllocationRepository;
+import org.example.nura.domain.schedule.repository.DutyScheduleRepository;
 import org.example.nura.domain.schedule.repository.TimeBlockRepository;
 import org.example.nura.domain.schedule.service.overlay.CustomEventOverlayService;
 import org.example.nura.domain.schedule.service.overlay.TimeBlockOverlayService;
+import org.example.nura.domain.schedule.service.plan.CustomEventIntervalReader;
 import org.example.nura.domain.schedule.service.plan.DailyPlanContextReader;
 import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator;
 import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator.DailyPlanSummary;
+import org.example.nura.domain.schedule.service.plan.TimeSlotCalculator;
+import org.example.nura.domain.schedule.service.plan.WorkIntervalCalculator;
 import org.example.nura.domain.user.entity.enums.MealPattern;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
@@ -32,8 +42,10 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -48,10 +60,14 @@ public class CustomEventService {
     private final TimeBlockRepository timeBlockRepository;
     private final CustomEventRepository customEventRepository;
     private final UserRepository userRepository;
+    private final DutyScheduleRepository dutyScheduleRepository;
     private final DailyPlanContextReader dailyPlanContextReader;
     private final DailyPlanSummaryCalculator dailyPlanSummaryCalculator;
     private final CustomEventOverlayService customEventOverlayService;
     private final TimeBlockOverlayService timeBlockOverlayService;
+    private final WorkIntervalCalculator workIntervalCalculator;
+    private final CustomEventIntervalReader customEventIntervalReader;
+    private final TimeSlotCalculator timeSlotCalculator;
 
     public CustomEventCheckResponse check(
             Long userId,
@@ -282,6 +298,101 @@ public class CustomEventService {
         );
     }
 
+    public CustomEventRecommendationResponse recommendations(
+            Long userId,
+            CustomEventCheckRequest request
+    ) {
+        validateCreateRequest(
+                request
+        );
+
+        int durationMinutes =
+                (int) Duration.between(
+                        request.startAt(),
+                        request.endAt()
+                ).toMinutes();
+
+        LocalDate startDate =
+                request.startAt()
+                        .toLocalDate();
+
+        LocalDate today =
+                LocalDate.now(KST);
+
+        if (startDate.isBefore(today)) {
+            startDate = today;
+        }
+
+        List<RecommendationCandidate> strictCandidates =
+                findRecommendations(
+                        userId,
+                        startDate,
+                        durationMinutes,
+                        false
+                );
+
+        List<RecommendationCandidate> relaxedCandidates =
+                strictCandidates.size() >= 3
+                        ? List.of()
+                        : findRecommendations(
+                                userId,
+                                startDate,
+                                durationMinutes,
+                                true
+                        );
+
+        Map<String, RecommendationCandidate> merged =
+                new LinkedHashMap<>();
+
+        for (RecommendationCandidate candidate : strictCandidates) {
+            merged.put(
+                    candidate.key(),
+                    candidate
+            );
+        }
+
+        for (RecommendationCandidate candidate : relaxedCandidates) {
+            if (merged.size() >= 3) {
+                break;
+            }
+
+            merged.putIfAbsent(
+                    candidate.key(),
+                    candidate
+            );
+        }
+
+        List<CustomEventRecommendationItemResponse> recommendations =
+                merged.values()
+                        .stream()
+                        .sorted(
+                                Comparator.comparingInt(
+                                                RecommendationCandidate::priority
+                                        )
+                                        .thenComparing(
+                                                RecommendationCandidate::date
+                                        )
+                                        .thenComparing(
+                                                RecommendationCandidate::startAt
+                                        )
+                        )
+                        .limit(3)
+                        .map(this::toRecommendationResponse)
+                        .toList();
+
+        if (recommendations.isEmpty()) {
+            throw new BaseException(
+                    ErrorCode.EXTERNAL_API_ERROR,
+                    "추천 가능한 일정이 없습니다."
+            );
+        }
+
+        return new CustomEventRecommendationResponse(
+                durationMinutes,
+                recommendations
+        );
+    }
+
     private void validateTodayOnly(
             CustomEventCheckRequest request
     ) {
@@ -335,6 +446,260 @@ public class CustomEventService {
                     "일정 종료 시간은 시작 시간보다 이후여야 합니다."
             );
         }
+    }
+
+    private List<RecommendationCandidate> findRecommendations(
+            Long userId,
+            LocalDate startDate,
+            int durationMinutes,
+            boolean relaxed
+    ) {
+        List<RecommendationCandidate> candidates =
+                new ArrayList<>();
+
+        for (int dayOffset = 0; dayOffset < 365; dayOffset++) {
+            LocalDate date =
+                    startDate.plusDays(dayOffset);
+
+            RecommendationCandidate candidate =
+                    findRecommendationForDate(
+                            userId,
+                            date,
+                            durationMinutes,
+                            relaxed
+                    );
+
+            if (candidate != null) {
+                candidates.add(candidate);
+            }
+
+            if (candidates.size() >= 3) {
+                break;
+            }
+        }
+
+        return candidates;
+    }
+
+    private RecommendationCandidate findRecommendationForDate(
+            Long userId,
+            LocalDate date,
+            int durationMinutes,
+            boolean relaxed
+    ) {
+        LocalDateTime dayStart =
+                date.atStartOfDay();
+
+        LocalDateTime dayEnd =
+                date.plusDays(1).atStartOfDay();
+
+        LocalDateTime searchStart =
+                date.equals(LocalDate.now(KST))
+                        ? LocalDateTime.now(KST)
+                        : dayStart;
+
+        List<TimeInterval> occupied =
+                new ArrayList<>();
+
+        List<TimeInterval> workIntervals =
+                workIntervalCalculator.calculate(
+                        userId,
+                        date
+                );
+
+        occupied.addAll(
+                workIntervals
+        );
+
+        List<TimeInterval> customEventIntervals =
+                customEventIntervalReader.read(
+                        userId,
+                        date
+                );
+
+        occupied.addAll(
+                customEventIntervals
+        );
+
+        if (!relaxed) {
+            occupied.addAll(
+                    buildWorkBuffers(
+                            workIntervals
+                    )
+            );
+        }
+
+        List<TimeInterval> freeSlots =
+                timeSlotCalculator.calculate(
+                        searchStart,
+                        dayEnd,
+                        occupied
+                );
+
+        for (TimeInterval slot : freeSlots) {
+            long slotMinutes =
+                    ChronoUnit.MINUTES.between(
+                            slot.startAt(),
+                            slot.endAt()
+                    );
+
+            if (slotMinutes < durationMinutes) {
+                continue;
+            }
+
+            LocalDateTime startAt =
+                    slot.startAt();
+
+            LocalDateTime endAt =
+                    startAt.plusMinutes(durationMinutes);
+
+            return new RecommendationCandidate(
+                    date,
+                    startAt,
+                    endAt,
+                    relaxed,
+                    resolveRecommendationType(
+                            date,
+                            relaxed,
+                            userId
+                    ),
+                    resolveRecommendationDescription(
+                            date,
+                            relaxed,
+                            userId
+                    ),
+                    recommendationPriority(
+                            date,
+                            userId,
+                            relaxed
+                    )
+            );
+        }
+
+        return null;
+    }
+
+    private List<TimeInterval> buildWorkBuffers(
+            List<TimeInterval> workIntervals
+    ) {
+        List<TimeInterval> buffers =
+                new ArrayList<>();
+
+        for (TimeInterval interval : workIntervals) {
+            buffers.add(
+                    new TimeInterval(
+                            interval.startAt().minusMinutes(90),
+                            interval.endAt().plusMinutes(90)
+                    )
+            );
+        }
+
+        return buffers;
+    }
+
+    private CustomEventRecommendationType resolveRecommendationType(
+            LocalDate date,
+            boolean relaxed,
+            Long userId
+    ) {
+        if (relaxed) {
+            return CustomEventRecommendationType.BUFFER_RELAXED;
+        }
+
+        if (date.equals(LocalDate.now(KST))) {
+            return CustomEventRecommendationType.TODAY_SAFE;
+        }
+
+        ShiftType shiftType =
+                findShiftType(
+                        userId,
+                        date
+                );
+
+        if (shiftType == null
+                || shiftType == ShiftType.OFF) {
+            return CustomEventRecommendationType.OFF_DAY;
+        }
+
+        return CustomEventRecommendationType.NEARBY_DAY;
+    }
+
+    private String resolveRecommendationDescription(
+            LocalDate date,
+            boolean relaxed,
+            Long userId
+    ) {
+        if (relaxed) {
+            return "근무와 겹치지 않지만 출퇴근 여유시간 일부를 사용해요.";
+        }
+
+        if (date.equals(LocalDate.now(KST))) {
+            return "오늘 남은 안전한 시간을 활용할 수 있어요.";
+        }
+
+        ShiftType shiftType =
+                findShiftType(
+                        userId,
+                        date
+                );
+
+        if (shiftType == null
+                || shiftType == ShiftType.OFF) {
+            return "근무가 없는 날이라 여유 있게 일정을 배치할 수 있어요.";
+        }
+
+        return "근무와 겹치지 않는 가까운 날짜예요.";
+    }
+
+    private int recommendationPriority(
+            LocalDate date,
+            Long userId,
+            boolean relaxed
+    ) {
+        if (relaxed) {
+            return 30;
+        }
+
+        if (date.equals(LocalDate.now(KST))) {
+            return 10;
+        }
+
+        ShiftType shiftType =
+                findShiftType(
+                        userId,
+                        date
+                );
+
+        if (shiftType == null
+                || shiftType == ShiftType.OFF) {
+            return 20;
+        }
+
+        return 25;
+    }
+
+    private ShiftType findShiftType(
+            Long userId,
+            LocalDate date
+    ) {
+        return dutyScheduleRepository.findByUserIdAndDate(
+                userId,
+                date
+        ).map(DutySchedule::getShiftType)
+                .orElse(null);
+    }
+
+    private CustomEventRecommendationItemResponse toRecommendationResponse(
+            RecommendationCandidate candidate
+    ) {
+        return new CustomEventRecommendationItemResponse(
+                candidate.date(),
+                candidate.startAt(),
+                candidate.endAt(),
+                candidate.type(),
+                candidate.description(),
+                candidate.bufferRelaxed()
+        );
     }
 
     private int calculateCurrentRefreshMinutes(
@@ -526,6 +891,20 @@ public class CustomEventService {
                     ErrorCode.INVALID_INPUT_VALUE,
                     "일정 반영 결과의 총 시간이 1440분이 아닙니다."
             );
+        }
+    }
+
+    private record RecommendationCandidate(
+            LocalDate date,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            boolean bufferRelaxed,
+            CustomEventRecommendationType type,
+            String description,
+            int priority
+    ) {
+        String key() {
+            return date + "|" + startAt + "|" + endAt + "|" + bufferRelaxed;
         }
     }
 
