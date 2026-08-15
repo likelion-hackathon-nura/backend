@@ -67,6 +67,16 @@ public class HomeAiCommentService {
             );
 
             data.put(
+                    "myAdjustment",
+                    context.myAdjustment()
+            );
+
+            data.put(
+                    "refreshAdjustment",
+                    context.refreshAdjustment()
+            );
+
+            data.put(
                     "sensitivityLevel",
                     context.sensitivityLevel()
             );

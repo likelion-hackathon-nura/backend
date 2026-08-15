@@ -41,6 +41,10 @@ public final class DailyRefreshPrompt {
             - 피부 민감도, 피부 타입, 피부 고민, 전날 체크인 결과를 피부 회복 필요도 판단에 사용하세요.
             - 피부 회복은 일반 restActivities와 별개의 회복 블록입니다.
             - 전날 회복 루틴이 생성됐으나 완료되지 않았다면 피부 회복 필요도를 조금 더 높게 고려할 수 있습니다.
+            - myAdjustment와 refreshAdjustment는 마이타임/리프레시타임에 대한 최근 누적 피드백입니다.
+            - myAdjustment가 양수면 MY를 조금 더 확보하도록 일반 회복 시간을 보수적으로 구성하세요.
+            - refreshAdjustment가 양수면 REFRESH를 조금 더 우선하세요.
+            - 두 값이 충돌하면 refreshAdjustment를 우선하고 myAdjustment는 보조 신호로 활용하세요.
             
             - skinRecovery.enabled는 skinRecoveryAvailableSlots 존재 여부를 기준으로 결정하세요.
             - skinRecoveryAvailableSlots가 비어 있으면 반드시 skinRecovery.enabled를 false로 반환하세요.

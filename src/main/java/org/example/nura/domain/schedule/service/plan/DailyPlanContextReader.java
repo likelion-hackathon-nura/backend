@@ -151,6 +151,8 @@ public class DailyPlanContextReader {
                 user.getTargetSleepMinutes(),
                 user.getMealPattern(),
                 restActivities,
+                user.getMyAdjustment() == null ? 0 : user.getMyAdjustment(),
+                user.getRefreshAdjustment() == null ? 0 : user.getRefreshAdjustment(),
 
                 userSkin.getSensitivityLevel(),
                 userSkin.getSkinType(),

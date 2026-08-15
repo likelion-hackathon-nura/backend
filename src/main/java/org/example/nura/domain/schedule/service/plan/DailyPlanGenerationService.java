@@ -15,10 +15,13 @@ import org.example.nura.domain.schedule.repository.CustomEventRepository;
 import org.example.nura.domain.schedule.service.refresh.AvailableSlotMapper;
 import org.example.nura.domain.schedule.service.refresh.DailyRefreshAiService;
 import org.example.nura.domain.schedule.service.refresh.RefreshPlanAllocator;
+import org.example.nura.domain.schedule.service.refresh.RefreshPlanFeedbackBalancer;
+import org.example.nura.domain.schedule.service.refresh.RefreshPlanValidator;
 import org.example.nura.domain.schedule.service.refresh.SkinRecoverySlotResolver;
 import org.example.nura.domain.user.entity.enums.RestActivityType;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,6 +41,8 @@ public class DailyPlanGenerationService {
 
     private final AvailableSlotMapper availableSlotMapper;
     private final DailyRefreshAiService dailyRefreshAiService;
+    private final RefreshPlanValidator refreshPlanValidator;
+    private final RefreshPlanFeedbackBalancer refreshPlanFeedbackBalancer;
     private final RefreshPlanAllocator refreshPlanAllocator;
 
     private final CustomEventRepository customEventRepository;
@@ -197,11 +202,33 @@ public class DailyPlanGenerationService {
                         aiRequest
                 );
 
+        int availablePoolMinutes =
+                availableIntervals.stream()
+                        .mapToInt(interval ->
+                                (int) Duration.between(
+                                        interval.startAt(),
+                                        interval.endAt()
+                                ).toMinutes()
+                        )
+                        .sum();
+
+        RefreshPlanAiResponse balancedResponse =
+                refreshPlanFeedbackBalancer.balance(
+                        aiRequest,
+                        aiResponse,
+                        availablePoolMinutes
+                );
+
+        refreshPlanValidator.validate(
+                aiRequest,
+                balancedResponse
+        );
+
         // AI 추천을 실제 시간으로 배치
         RefreshAllocationResult refreshAllocation =
                 refreshPlanAllocator.allocate(
                         aiRequest,
-                        aiResponse
+                        balancedResponse
                 );
 
         // 온보딩 RestActivity 기반 회복 블록
@@ -300,6 +327,8 @@ public class DailyPlanGenerationService {
                 context.targetSleepMinutes(),
                 context.mealPattern(),
                 context.restActivities(),
+                context.myAdjustment(),
+                context.refreshAdjustment(),
                 context.sensitivityLevel(),
                 context.skinType(),
                 context.skinConcerns(),
