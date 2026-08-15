@@ -24,4 +24,6 @@ public interface CustomEventRepository
             @Param("startAt") LocalDateTime startAt,
             @Param("endAt") LocalDateTime endAt
     );
+
+    void deleteAllByUserId(Long userId);
 }

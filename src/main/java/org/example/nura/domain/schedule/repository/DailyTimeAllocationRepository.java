@@ -4,6 +4,7 @@ import org.example.nura.domain.schedule.entity.DailyTimeAllocation;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 public interface DailyTimeAllocationRepository
@@ -14,8 +15,12 @@ public interface DailyTimeAllocationRepository
             LocalDate date
     );
 
+    List<DailyTimeAllocation> findAllByUserId(Long userId);
+
     boolean existsByUserIdAndDate(
             Long userId,
             LocalDate date
     );
+
+    void deleteAllByUserId(Long userId);
 }

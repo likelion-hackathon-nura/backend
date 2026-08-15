@@ -18,7 +18,7 @@ import java.time.LocalDate;
 
 @Tag(name = "근무표 관리", description = "근무표 조회 및 등록/수정 API")
 @RestController
-@RequestMapping("api/schedules")
+@RequestMapping("/api/schedules")
 @RequiredArgsConstructor
 public class DutyScheduleController {
 

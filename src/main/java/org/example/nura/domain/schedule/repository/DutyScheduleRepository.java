@@ -25,4 +25,6 @@ public interface DutyScheduleRepository
             Long userId,
             LocalDate date
     );
+
+    void deleteAllByUserId(Long userId);
 }

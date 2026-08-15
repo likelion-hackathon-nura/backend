@@ -11,4 +11,6 @@ public interface UserSkinRepository
     Optional<UserSkin> findByUserId(Long userId);
 
     boolean existsByUserId(Long userId);
+
+    void deleteByUserId(Long userId);
 }
