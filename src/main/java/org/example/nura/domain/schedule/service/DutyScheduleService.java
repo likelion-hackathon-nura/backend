@@ -8,9 +8,19 @@ import org.example.nura.domain.schedule.dto.request.DutyScheduleItemRequest;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleSaveRequest;
 import org.example.nura.domain.schedule.dto.response.DutyScheduleDayResponse;
 import org.example.nura.domain.schedule.dto.response.DutyScheduleWeeklyResponse;
+import org.example.nura.domain.schedule.dto.plan.PlannedTimeBlock;
+import org.example.nura.domain.schedule.dto.context.TimeInterval;
 import org.example.nura.domain.schedule.entity.DutySchedule;
+import org.example.nura.domain.schedule.entity.DailyTimeAllocation;
+import org.example.nura.domain.schedule.entity.TimeBlock;
+import org.example.nura.domain.schedule.entity.enums.TimeBlockSource;
+import org.example.nura.domain.schedule.entity.enums.TimeCategory;
 import org.example.nura.domain.schedule.entity.enums.ShiftType;
+import org.example.nura.domain.schedule.repository.DailyTimeAllocationRepository;
 import org.example.nura.domain.schedule.repository.DutyScheduleRepository;
+import org.example.nura.domain.schedule.repository.TimeBlockRepository;
+import org.example.nura.domain.schedule.service.overlay.TimeBlockOverlayService;
+import org.example.nura.domain.schedule.service.plan.DailyPlanSummaryCalculator;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
@@ -26,15 +36,16 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.ArrayList;
 
 @Slf4j
 @Service
@@ -47,10 +58,14 @@ public class DutyScheduleService {
 
     private final DutyScheduleRepository dutyScheduleRepository;
     private final UserRepository userRepository;
+    private final DailyTimeAllocationRepository dailyTimeAllocationRepository;
+    private final TimeBlockRepository timeBlockRepository;
 
     private final DutyScheduleAiService dutyScheduleAiService;
     private final DutyScheduleOcrClient dutyScheduleOcrClient;
     private final DutyScheduleOcrParser dutyScheduleOcrParser;
+    private final DailyPlanSummaryCalculator dailyPlanSummaryCalculator;
+    private final TimeBlockOverlayService timeBlockOverlayService;
     private final ObjectMapper objectMapper;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -226,6 +241,16 @@ public class DutyScheduleService {
             dutyScheduleRepository.saveAll(toSave);
             dutyScheduleRepository.flush();
 
+            if (containsToday(
+                    request,
+                    today
+            )) {
+                syncTodayHome(
+                        userId,
+                        today
+                );
+            }
+
         } catch (DataIntegrityViolationException e) {
 
             log.warn(
@@ -239,6 +264,167 @@ public class DutyScheduleService {
                     "이미 등록된 날짜의 근무가 포함되어 있습니다."
             );
         }
+    }
+
+    private void syncTodayHome(
+            Long userId,
+            LocalDate today
+    ) {
+        DailyTimeAllocation allocation =
+                dailyTimeAllocationRepository
+                        .findByUserIdAndDate(
+                                userId,
+                                today
+                        )
+                        .orElse(null);
+
+        if (allocation == null) {
+            return;
+        }
+
+        List<DutySchedule> schedules =
+                dutyScheduleRepository
+                        .findAllByUserIdAndDateBetweenOrderByDateAsc(
+                                userId,
+                                today.minusDays(1),
+                                today
+                        );
+
+        List<TimeBlock> currentBlocks =
+                timeBlockRepository
+                        .findAllByAllocationIdOrderByStartAtAsc(
+                                allocation.getId()
+                        );
+        LocalDateTime dayStart =
+                today.atStartOfDay();
+
+        LocalDateTime dayEnd =
+                today.plusDays(1).atStartOfDay();
+
+        for (DutySchedule schedule : schedules) {
+            if (schedule.getShiftType() == ShiftType.OFF
+                    || schedule.getStartTime() == null
+                    || schedule.getEndTime() == null) {
+                continue;
+            }
+
+            TimeInterval workInterval =
+                    clipScheduleToToday(
+                            schedule,
+                            dayStart,
+                            dayEnd
+                    );
+
+            if (workInterval == null) {
+                continue;
+            }
+
+            TimeBlockOverlayService.OverlayResult overlayResult =
+                    timeBlockOverlayService.overlay(
+                            allocation,
+                            currentBlocks,
+                            TimeCategory.SOCIAL,
+                            "근무",
+                            workInterval.startAt(),
+                            workInterval.endAt(),
+                            null,
+                            Map.of(),
+                            TimeBlockSource.SCHEDULE
+                    );
+
+            if (!overlayResult.blocksToDelete().isEmpty()) {
+                timeBlockRepository.deleteAll(
+                        overlayResult.blocksToDelete()
+                );
+            }
+
+            if (!overlayResult.blocksToInsert().isEmpty()) {
+                timeBlockRepository.saveAll(
+                        overlayResult.blocksToInsert()
+                );
+            }
+
+            currentBlocks =
+                    timeBlockRepository
+                            .findAllByAllocationIdOrderByStartAtAsc(
+                                    allocation.getId()
+                            );
+        }
+
+        List<PlannedTimeBlock> plannedBlocks =
+                currentBlocks.stream()
+                        .map(block ->
+                                new PlannedTimeBlock(
+                                        block.getCategory(),
+                                        block.getLabel(),
+                                        block.getStartAt(),
+                                        block.getEndAt(),
+                                        block.getSource(),
+                                        block.getCustomEvent()
+                                )
+                        )
+                        .toList();
+
+        DailyPlanSummaryCalculator.DailyPlanSummary summary =
+                dailyPlanSummaryCalculator.calculate(
+                        plannedBlocks
+                );
+
+        allocation.updateAllocation(
+                summary.socialMinutes(),
+                summary.refreshMinutes(),
+                summary.myMinutes(),
+                allocation.getAiComment()
+        );
+    }
+
+    private TimeInterval clipScheduleToToday(
+            DutySchedule schedule,
+            LocalDateTime dayStart,
+            LocalDateTime dayEnd
+    ) {
+        LocalDateTime startAt =
+                schedule.getDate().atTime(
+                        schedule.getStartTime()
+                );
+
+        LocalDateTime endAt =
+                schedule.getDate().atTime(
+                        schedule.getEndTime()
+                );
+
+        if (!endAt.isAfter(startAt)) {
+            endAt = endAt.plusDays(1);
+        }
+
+        LocalDateTime clippedStart =
+                startAt.isBefore(dayStart)
+                        ? dayStart
+                        : startAt;
+
+        LocalDateTime clippedEnd =
+                endAt.isAfter(dayEnd)
+                        ? dayEnd
+                        : endAt;
+
+        if (!clippedEnd.isAfter(clippedStart)) {
+            return null;
+        }
+
+        return new TimeInterval(
+                clippedStart,
+                clippedEnd
+        );
+    }
+
+    private boolean containsToday(
+            DutyScheduleSaveRequest request,
+            LocalDate today
+    ) {
+        return request.schedules().stream()
+                .anyMatch(item ->
+                        today.equals(item.date())
+                );
     }
 
     private DutyScheduleOcrResponse parseOpenAiResponse(
