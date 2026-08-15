@@ -9,5 +9,6 @@ public interface RoutineStepRepository extends JpaRepository<RoutineStep, Long> 
     List<RoutineStep> findAllByRoutineIdOrderByStepOrderAsc(Long routineId);
 
     void deleteAllByRoutineId(Long routineId);
-}
 
+    void deleteAllByRoutineCheckinUserId(Long userId);
+}
