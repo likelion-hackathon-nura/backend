@@ -3,7 +3,6 @@ package org.example.nura.domain.schedule.service.refresh;
 import org.example.nura.domain.schedule.dto.ai.RefreshPlanAiRequest;
 import org.example.nura.domain.schedule.dto.ai.RefreshPlanAiResponse;
 import org.example.nura.domain.schedule.dto.ai.RefreshPlanItem;
-import org.example.nura.domain.schedule.dto.ai.SkinRecoveryPlan;
 import org.example.nura.domain.schedule.dto.context.AvailableSlotContext;
 import org.springframework.stereotype.Component;
 
@@ -16,9 +15,9 @@ import java.util.Map;
 @Component
 public class RefreshPlanFeedbackBalancer {
 
-    private static final int ADJUSTMENT_STEP_MINUTES = 15;
-    private static final int MIN_REFRESH_ACTIVITY_MINUTES = 1;
-    private static final int MIN_SKIN_RECOVERY_MINUTES = 15;
+    private static final int MIN_REFRESH_ACTIVITY_MINUTES = 5;
+    private static final int ADJUSTMENT_STEP_MINUTES = 5;
+    private static final int MAX_SHIFT_MINUTES = 15;
 
     public RefreshPlanAiResponse balance(
             RefreshPlanAiRequest request,
@@ -31,74 +30,62 @@ public class RefreshPlanFeedbackBalancer {
 
         List<RefreshComponent> components =
                 buildComponents(
-                        request,
-                        response
+                        request.availableSlots(),
+                        response.refreshPlan()
                 );
 
-        if (components.isEmpty()) {
+        if (components.isEmpty()
+                || availablePoolMinutes <= 0) {
             return response;
         }
 
         int currentRefreshMinutes =
                 components.stream()
-                        .mapToInt(component ->
-                                component.currentMinutes
-                        )
+                        .mapToInt(component -> component.currentMinutes)
                         .sum();
 
-        if (currentRefreshMinutes <= 0
-                || availablePoolMinutes <= 0) {
+        if (currentRefreshMinutes <= 0) {
             return response;
         }
 
-        int currentMyMinutes =
-                Math.max(
-                        0,
-                        availablePoolMinutes - currentRefreshMinutes
-                );
+        int balanceScore =
+                request.balanceScore() == null
+                        ? 0
+                        : request.balanceScore();
 
-        int refreshWeight =
-                Math.max(
-                        1,
-                        currentRefreshMinutes
-                                + toAdjustmentMinutes(
-                                request.refreshAdjustment()
-                        )
-                );
-        int myWeight =
-                Math.max(
-                        1,
-                        currentMyMinutes
-                                + toAdjustmentMinutes(
-                                request.myAdjustment()
-                        )
+        if (Math.abs(balanceScore) < 2) {
+            return response;
+        }
+
+        int shiftMinutes =
+                Math.min(
+                        MAX_SHIFT_MINUTES,
+                        Math.abs(balanceScore) * ADJUSTMENT_STEP_MINUTES
                 );
 
         int targetRefreshMinutes =
-                (int) Math.round(
-                        (double) availablePoolMinutes
-                                * refreshWeight
-                                / (refreshWeight + myWeight)
-                );
+                currentRefreshMinutes
+                        + (balanceScore > 0
+                        ? shiftMinutes
+                        : -shiftMinutes);
 
         int minRefreshMinutes =
                 components.stream()
-                        .mapToInt(component ->
-                                component.minMinutes
-                        )
+                        .mapToInt(component -> component.minMinutes)
                         .sum();
         int maxRefreshMinutes =
                 components.stream()
-                        .mapToInt(component ->
-                                component.maxMinutes
-                        )
+                        .mapToInt(component -> component.maxMinutes)
                         .sum();
 
         targetRefreshMinutes =
                 Math.max(
                         minRefreshMinutes,
                         Math.min(
-                                maxRefreshMinutes,
+                                Math.min(
+                                        maxRefreshMinutes,
+                                        availablePoolMinutes
+                                ),
                                 targetRefreshMinutes
                         )
                 );
@@ -117,38 +104,70 @@ public class RefreshPlanFeedbackBalancer {
                 new ArrayList<>();
 
         for (RefreshComponent component : components) {
-            if (component.skinRecovery) {
-                continue;
-            }
-
             adjustedItems.add(
                     new RefreshPlanItem(
                             component.activityType,
-                            adjustedDurations.get(
-                                    component.index
-                            ),
+                            adjustedDurations.get(component.index),
                             component.slotId
                     )
             );
         }
 
-        SkinRecoveryPlan adjustedSkinRecovery =
-                response.skinRecovery() == null
-                        ? null
-                        : new SkinRecoveryPlan(
-                        response.skinRecovery().enabled(),
-                        findAdjustedSkinRecoveryDuration(
-                                components,
-                                adjustedDurations,
-                                response.skinRecovery().durationMinutes()
-                        ),
-                        response.skinRecovery().preferredSlotId()
-                );
-
         return new RefreshPlanAiResponse(
                 adjustedItems,
-                adjustedSkinRecovery
+                response.skinRecovery()
         );
+    }
+
+    private List<RefreshComponent> buildComponents(
+            List<AvailableSlotContext> availableSlots,
+            List<RefreshPlanItem> refreshPlan
+    ) {
+        Map<String, Integer> slotDurationMap =
+                new HashMap<>();
+
+        if (availableSlots != null) {
+            for (AvailableSlotContext slot : availableSlots) {
+                slotDurationMap.put(
+                        slot.slotId(),
+                        (int) slot.durationMinutes()
+                );
+            }
+        }
+
+        List<RefreshComponent> components =
+                new ArrayList<>();
+
+        if (refreshPlan == null) {
+            return components;
+        }
+
+        for (int i = 0; i < refreshPlan.size(); i++) {
+            RefreshPlanItem item =
+                    refreshPlan.get(i);
+
+            Integer slotDuration =
+                    slotDurationMap.get(
+                            item.preferredSlotId()
+                    );
+
+            if (slotDuration == null) {
+                continue;
+            }
+
+            components.add(
+                    new RefreshComponent(
+                            i,
+                            item.activityType(),
+                            item.preferredSlotId(),
+                            item.durationMinutes(),
+                            MIN_REFRESH_ACTIVITY_MINUTES,
+                            slotDuration
+                    )
+            );
+        }
+
+        return components;
     }
 
     private Map<Integer, Integer> redistribute(
@@ -160,9 +179,7 @@ public class RefreshPlanFeedbackBalancer {
 
         double currentRefreshMinutes =
                 components.stream()
-                        .mapToInt(component ->
-                                component.currentMinutes
-                        )
+                        .mapToInt(component -> component.currentMinutes)
                         .sum();
 
         double factor =
@@ -291,131 +308,13 @@ public class RefreshPlanFeedbackBalancer {
         return durations;
     }
 
-    private List<RefreshComponent> buildComponents(
-            RefreshPlanAiRequest request,
-            RefreshPlanAiResponse response
-    ) {
-        Map<String, AvailableSlotContext> refreshSlots =
-                new HashMap<>();
-        if (request.availableSlots() != null) {
-            for (AvailableSlotContext slot : request.availableSlots()) {
-                refreshSlots.put(
-                        slot.slotId(),
-                        slot
-                );
-            }
-        }
-
-        Map<String, AvailableSlotContext> skinRecoverySlots =
-                new HashMap<>();
-        if (request.skinRecoveryAvailableSlots() != null) {
-            for (AvailableSlotContext slot : request.skinRecoveryAvailableSlots()) {
-                skinRecoverySlots.put(
-                        slot.slotId(),
-                        slot
-                );
-            }
-        }
-
-        List<RefreshComponent> components =
-                new ArrayList<>();
-
-        List<RefreshPlanItem> refreshPlan =
-                response.refreshPlan() == null
-                        ? List.of()
-                        : response.refreshPlan();
-
-        for (int i = 0; i < refreshPlan.size(); i++) {
-            RefreshPlanItem item =
-                    refreshPlan.get(i);
-            AvailableSlotContext slot =
-                    refreshSlots.get(
-                            item.preferredSlotId()
-                    );
-
-            if (slot == null) {
-                continue;
-            }
-
-            components.add(
-                    new RefreshComponent(
-                            i,
-                            item.activityType(),
-                            item.preferredSlotId(),
-                            item.durationMinutes(),
-                            MIN_REFRESH_ACTIVITY_MINUTES,
-                            (int) slot.durationMinutes(),
-                            false
-                    )
-            );
-        }
-
-        SkinRecoveryPlan skinRecovery =
-                response.skinRecovery();
-
-        if (skinRecovery != null
-                && skinRecovery.enabled()
-                && skinRecovery.preferredSlotId() != null
-                && skinRecovery.durationMinutes() != null) {
-
-            AvailableSlotContext slot =
-                    skinRecoverySlots.get(
-                            skinRecovery.preferredSlotId()
-                    );
-
-            if (slot != null) {
-                components.add(
-                        new RefreshComponent(
-                                components.size(),
-                                null,
-                                skinRecovery.preferredSlotId(),
-                                skinRecovery.durationMinutes(),
-                                MIN_SKIN_RECOVERY_MINUTES,
-                                (int) slot.durationMinutes(),
-                                true
-                        )
-                );
-            }
-        }
-
-        return components;
-    }
-
-    private Integer findAdjustedSkinRecoveryDuration(
-            List<RefreshComponent> components,
-            Map<Integer, Integer> adjustedDurations,
-            Integer fallbackDuration
-    ) {
-        for (RefreshComponent component : components) {
-            if (!component.skinRecovery) {
-                continue;
-            }
-
-            return adjustedDurations.getOrDefault(
-                    component.index,
-                    fallbackDuration
-            );
-        }
-
-        return fallbackDuration;
-    }
-
-    private int toAdjustmentMinutes(Integer adjustment) {
-        if (adjustment == null) {
-            return 0;
-        }
-
-        return adjustment * ADJUSTMENT_STEP_MINUTES;
-    }
-
     private record RefreshComponent(
             int index,
             org.example.nura.domain.user.entity.enums.RestActivityType activityType,
             String slotId,
             int currentMinutes,
             int minMinutes,
-            int maxMinutes,
-            boolean skinRecovery
+            int maxMinutes
     ) {
     }
 }

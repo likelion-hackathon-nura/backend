@@ -67,13 +67,8 @@ public class HomeAiCommentService {
             );
 
             data.put(
-                    "myAdjustment",
-                    context.myAdjustment()
-            );
-
-            data.put(
-                    "refreshAdjustment",
-                    context.refreshAdjustment()
+                    "balanceScore",
+                    context.balanceScore()
             );
 
             data.put(
