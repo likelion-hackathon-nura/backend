@@ -494,9 +494,18 @@ public class CustomEventService {
                 date.plusDays(1).atStartOfDay();
 
         LocalDateTime searchStart =
-                date.equals(LocalDate.now(KST))
-                        ? LocalDateTime.now(KST)
-                        : dayStart;
+                max(
+                        date.equals(LocalDate.now(KST))
+                                ? LocalDateTime.now(KST)
+                                : dayStart,
+                        preferredRecommendationStart(
+                                date,
+                                findShiftType(
+                                        userId,
+                                        date
+                                )
+                        )
+                );
 
         List<TimeInterval> occupied =
                 new ArrayList<>();
@@ -595,6 +604,18 @@ public class CustomEventService {
         }
 
         return buffers;
+    }
+
+    private LocalDateTime preferredRecommendationStart(
+            LocalDate date,
+            ShiftType shiftType
+    ) {
+        if (shiftType == ShiftType.N) {
+            return date.atStartOfDay();
+        }
+
+        // D/E/OFF는 새벽 추천을 우선 제외
+        return date.atTime(6, 0);
     }
 
     private CustomEventRecommendationType resolveRecommendationType(
