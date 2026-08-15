@@ -16,5 +16,6 @@ public interface CheckinRepository extends JpaRepository<Checkin, Long> {
             Long userId,
             LocalDate date
     );
-}
 
+    void deleteAllByUserId(Long userId);
+}

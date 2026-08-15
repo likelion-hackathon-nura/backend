@@ -17,4 +17,6 @@ public interface SkinRoutineRepository extends JpaRepository<SkinRoutine, Long> 
 			@Param("userId") Long userId,
 			@Param("date") LocalDate date
 	);
+
+	void deleteAllByCheckinUserId(Long userId);
 }

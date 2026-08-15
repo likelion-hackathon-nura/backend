@@ -12,9 +12,10 @@ import org.example.nura.domain.auth.dto.response.TokenRefreshResponse;
 import org.example.nura.domain.auth.service.AuthService;
 import org.example.nura.global.common.ApiResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "회원", description = "회원가입, 로그인, 온보딩 API")
+@Tag(name = "회원", description = "회원가입, 로그인, 로그아웃, 계정 삭제 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -61,5 +62,23 @@ public class AuthController {
                 "토큰이 재발급되었습니다.",
                 response
         );
+    }
+
+    @PostMapping("/logout")
+    @Operation(summary = "로그아웃", description = "현재 클라이언트의 토큰 폐기")
+    public ApiResponse<Void> logout() {
+        authService.logout();
+
+        return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/me")
+    @Operation(summary = "계정 삭제", description = "현재 사용자 계정과 관련 데이터를 삭제합니다.")
+    public ApiResponse<Void> deleteAccount(
+            @AuthenticationPrincipal Long userId
+    ) {
+        authService.deleteAccount(userId);
+
+        return ApiResponse.ok();
     }
 }
