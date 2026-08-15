@@ -26,6 +26,30 @@ public class TimeBlockOverlayService {
             CustomEvent customEvent,
             Map<Long, CustomEvent> rightSplitEventsByOriginalId
     ) {
+        return overlay(
+                allocation,
+                existingBlocks,
+                category,
+                label,
+                startAt,
+                endAt,
+                customEvent,
+                rightSplitEventsByOriginalId,
+                TimeBlockSource.MANUAL
+        );
+    }
+
+    public OverlayResult overlay(
+            DailyTimeAllocation allocation,
+            List<TimeBlock> existingBlocks,
+            TimeCategory category,
+            String label,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            CustomEvent customEvent,
+            Map<Long, CustomEvent> rightSplitEventsByOriginalId,
+            TimeBlockSource newSource
+    ) {
         TimeBlock newBlock =
                 TimeBlock.create(
                         allocation,
@@ -34,7 +58,7 @@ public class TimeBlockOverlayService {
                         label,
                         startAt,
                         endAt,
-                        TimeBlockSource.MANUAL,
+                        newSource,
                         null
                 );
 
