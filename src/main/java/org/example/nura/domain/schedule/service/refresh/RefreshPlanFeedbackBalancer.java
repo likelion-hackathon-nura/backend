@@ -53,7 +53,7 @@ public class RefreshPlanFeedbackBalancer {
                         ? 0
                         : request.balanceScore();
 
-        if (Math.abs(balanceScore) < 2) {
+        if (balanceScore == 0) {
             return response;
         }
 
