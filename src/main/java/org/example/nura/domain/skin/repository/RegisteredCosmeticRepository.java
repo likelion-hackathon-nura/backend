@@ -13,6 +13,9 @@ public interface RegisteredCosmeticRepository extends JpaRepository<RegisteredCo
     boolean existsByUserId(Long userId);
 
     Optional<RegisteredCosmetic> findByIdAndUserId(Long id, Long userId);
+    List<RegisteredCosmetic> findByUserIdOrderByCreatedAtDesc(Long userId);
+
+    List<RegisteredCosmetic> findByUserIdAndCosmeticNameContainingIgnoreCaseOrderByCreatedAtDesc(Long userId, String cosmeticName);
 
     void deleteAllByUserId(Long userId);
 }
