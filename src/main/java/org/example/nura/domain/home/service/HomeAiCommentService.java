@@ -67,6 +67,11 @@ public class HomeAiCommentService {
             );
 
             data.put(
+                    "balanceScore",
+                    context.balanceScore()
+            );
+
+            data.put(
                     "sensitivityLevel",
                     context.sensitivityLevel()
             );

@@ -151,6 +151,7 @@ public class DailyPlanContextReader {
                 user.getTargetSleepMinutes(),
                 user.getMealPattern(),
                 restActivities,
+                calculateBalanceScore(user),
 
                 userSkin.getSensitivityLevel(),
                 userSkin.getSkinType(),
@@ -159,6 +160,19 @@ public class DailyPlanContextReader {
                 previousCheckin,
                 previousRecoveryRoutineCompleted
         );
+    }
+
+    private int calculateBalanceScore(User user) {
+        int refreshAdjustment =
+                user.getRefreshAdjustment() == null
+                        ? 0
+                        : user.getRefreshAdjustment();
+        int myAdjustment =
+                user.getMyAdjustment() == null
+                        ? 0
+                        : user.getMyAdjustment();
+
+        return refreshAdjustment - myAdjustment;
     }
 
     private ShiftType findShiftType(

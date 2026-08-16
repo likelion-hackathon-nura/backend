@@ -73,6 +73,12 @@ public class User extends BaseTimeEntity {
     @Column(name = "onboarding_completed", nullable = false)
     private boolean onboardingCompleted = false;
 
+    @Column(name = "my_adjustment", nullable = false)
+    private Integer myAdjustment = 0;
+
+    @Column(name = "refresh_adjustment", nullable = false)
+    private Integer refreshAdjustment = 0;
+
     private User(
             String email,
             String passwordHash,
@@ -117,6 +123,25 @@ public class User extends BaseTimeEntity {
         this.onboardingCompleted = true;
     }
 
+    public void applyScheduleFeedback(
+            Integer myDelta,
+            Integer refreshDelta
+    ) {
+        if (myDelta != null) {
+            this.myAdjustment =
+                    clampAdjustment(
+                            getSafeMyAdjustment() + myDelta
+                    );
+        }
+
+        if (refreshDelta != null) {
+            this.refreshAdjustment =
+                    clampAdjustment(
+                            getSafeRefreshAdjustment() + refreshDelta
+                    );
+        }
+    }
+
     public void updatePreferences(
             Integer targetSleepMinutes,
             MealPattern mealPattern
@@ -144,5 +169,20 @@ public class User extends BaseTimeEntity {
         this.shiftEEnd = shiftEEnd;
         this.shiftNStart = shiftNStart;
         this.shiftNEnd = shiftNEnd;
+    }
+
+    private int clampAdjustment(int value) {
+        return Math.max(
+                -2,
+                Math.min(2, value)
+        );
+    }
+
+    private int getSafeMyAdjustment() {
+        return myAdjustment == null ? 0 : myAdjustment;
+    }
+
+    private int getSafeRefreshAdjustment() {
+        return refreshAdjustment == null ? 0 : refreshAdjustment;
     }
 }

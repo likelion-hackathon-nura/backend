@@ -24,6 +24,7 @@ public record RefreshPlanAiRequest(
         MealPattern mealPattern,
 
         List<RestActivityType> restActivities,
+        Integer balanceScore,
 
         SkinSensitivityLevel sensitivityLevel,
         SkinType skinType,

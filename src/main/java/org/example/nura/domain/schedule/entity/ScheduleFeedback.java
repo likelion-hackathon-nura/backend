@@ -12,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,9 +20,19 @@ import org.example.nura.domain.schedule.entity.enums.FeedbackWeight;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.global.common.BaseTimeEntity;
 
+import java.time.LocalDate;
+
 @Getter
 @Entity
-@Table(name = "schedule_feedback")
+@Table(
+        name = "schedule_feedback",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_schedule_feedback_user_date",
+                        columnNames = {"user_id", "feedback_date"}
+                )
+        }
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ScheduleFeedback extends BaseTimeEntity {
 
@@ -43,7 +54,6 @@ public class ScheduleFeedback extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "my_weight",
-            nullable = false,
             length = 10
     )
     private FeedbackWeight myWeight;
@@ -51,10 +61,12 @@ public class ScheduleFeedback extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "refresh_weight",
-            nullable = false,
             length = 10
     )
     private FeedbackWeight refreshWeight;
+
+    @Column(name = "feedback_date", nullable = false)
+    private LocalDate feedbackDate;
 
     @Column(
             name = "feedback_contents",
@@ -63,41 +75,32 @@ public class ScheduleFeedback extends BaseTimeEntity {
     private String feedbackContents;
 
     private ScheduleFeedback(
-            User user,
-            FeedbackWeight myWeight,
-            FeedbackWeight refreshWeight,
-            String feedbackContents
+        User user,
+        LocalDate feedbackDate,
+        FeedbackWeight myWeight,
+        FeedbackWeight refreshWeight,
+        String feedbackContents
     ) {
         this.user = user;
+        this.feedbackDate = feedbackDate;
         this.myWeight = myWeight;
         this.refreshWeight = refreshWeight;
         this.feedbackContents = feedbackContents;
     }
 
     public static ScheduleFeedback create(
-            User user,
-            FeedbackWeight myWeight,
-            FeedbackWeight refreshWeight,
-            String feedbackContents
+        User user,
+        LocalDate feedbackDate,
+        FeedbackWeight myWeight,
+        FeedbackWeight refreshWeight,
+        String feedbackContents
     ) {
-        validateWeights(myWeight, refreshWeight);
-
         return new ScheduleFeedback(
-                user,
-                myWeight,
-                refreshWeight,
-                feedbackContents
+            user,
+            feedbackDate,
+            myWeight,
+            refreshWeight,
+            feedbackContents
         );
-    }
-
-    private static void validateWeights(
-            FeedbackWeight myWeight,
-            FeedbackWeight refreshWeight
-    ) {
-        if (myWeight == null || refreshWeight == null) {
-            throw new IllegalArgumentException(
-                    "마이타임과 리프레시타임 가중치는 필수입니다."
-            );
-        }
     }
 }
