@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.skin.dto.request.RegisteredCosmeticCreateRequest;
 import org.example.nura.domain.skin.dto.response.CosmeticOcrResponse;
+import org.example.nura.domain.skin.dto.response.RegisteredCosmeticListResponse;
 import org.example.nura.domain.skin.dto.response.RegisteredCosmeticResponse;
 import org.example.nura.domain.skin.service.CosmeticService;
 import org.example.nura.global.common.ApiResponse;
@@ -12,11 +13,7 @@ import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -56,6 +53,27 @@ public class CosmeticController {
         RegisteredCosmeticResponse response = cosmeticService.registerCosmetic(userId, request);
         return ApiResponse.success("화장품 등록에 성공했습니다.", response);
     }
+
+    @Operation(summary = "등록 화장품 삭제", description = "사용자가 등록한 화장품을 삭제합니다.")
+    @DeleteMapping("/{cosmeticId}")
+    public ApiResponse<Void> delete(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long cosmeticId
+    ) {
+        cosmeticService.deleteCosmetic(userId, cosmeticId);
+        return ApiResponse.success("화장품 삭제에 성공했습니다.", null);
+    }
+
+    @Operation(summary = "등록 화장품 목록 조회 및 검색", description = "마이페이지에서 등록한 화장품 목록을 조회하거나 이름으로 검색합니다.")
+    @GetMapping
+    public ApiResponse<RegisteredCosmeticListResponse> getMyCosmetics(
+            @AuthenticationPrincipal Long userId,
+            @RequestParam(required = false) String keyword
+    ) {
+        RegisteredCosmeticListResponse response = cosmeticService.getMyCosmetics(userId, keyword);
+        return ApiResponse.success("등록 화장품 목록 조회에 성공했습니다.", response);
+    }
+
 
     private void validateImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {

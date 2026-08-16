@@ -261,12 +261,12 @@ public class SkinRoutineService {
 
     private List<CosmeticType> preferredCosmeticTypes(SkinCareType careType) {
         return switch (careType) {
-            case SOOTHING -> List.of(CosmeticType.TONER, CosmeticType.SERUM, CosmeticType.MASK);
+            case SOOTHING -> List.of(CosmeticType.TONER, CosmeticType.SERUM, CosmeticType.CREAM);
             case HYDRATION -> List.of(CosmeticType.TONER, CosmeticType.LOTION, CosmeticType.SERUM);
             case MOISTURIZING -> List.of(CosmeticType.CREAM, CosmeticType.LOTION);
             case BARRIER_CARE -> List.of(CosmeticType.CREAM, CosmeticType.LOTION, CosmeticType.SERUM);
             case OIL_CONTROL -> List.of(CosmeticType.CLEANSER, CosmeticType.TONER, CosmeticType.SERUM);
-            case TROUBLE_CARE -> List.of(CosmeticType.SERUM, CosmeticType.MASK, CosmeticType.TONER);
+            case TROUBLE_CARE -> List.of(CosmeticType.SERUM, CosmeticType.TONER, CosmeticType.CLEANSER);
         };
     }
 
