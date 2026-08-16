@@ -22,6 +22,7 @@ public record DailyPlanContext(
         Integer targetSleepMinutes,
         MealPattern mealPattern,
         List<RestActivityType> restActivities,
+        Integer balanceScore,
 
         SkinSensitivityLevel sensitivityLevel,
         SkinType skinType,
