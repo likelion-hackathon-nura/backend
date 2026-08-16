@@ -31,6 +31,7 @@ public enum ErrorCode {
     TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "A005", "인증 토큰이 존재하지 않습니다."),
     EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT, "A006", "이미 가입된 이메일입니다."),
     INVALID_LOGIN_CREDENTIALS(HttpStatus.UNAUTHORIZED, "A007", "이메일 또는 비밀번호가 올바르지 않습니다."),
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
 
     // External
     EXTERNAL_API_ERROR(HttpStatus.BAD_GATEWAY, "E001", "외부 서비스 오류가 발생했습니다.");
