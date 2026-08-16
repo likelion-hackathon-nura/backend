@@ -17,10 +17,14 @@ public interface DailyTimeAllocationRepository
 
     List<DailyTimeAllocation> findAllByUserId(Long userId);
 
+    List<DailyTimeAllocation> findAllByUserIdAndDateBetweenOrderByDateAsc(
+            Long userId, LocalDate startDate, LocalDate endDate
+    );
     boolean existsByUserIdAndDate(
             Long userId,
             LocalDate date
     );
+
 
     void deleteAllByUserId(Long userId);
 }
