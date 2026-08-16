@@ -44,7 +44,6 @@ public final class DailyRefreshPrompt {
             - balanceScore는 refreshAdjustment - myAdjustment로 계산된 값입니다.
             - balanceScore가 2 이상이면 REFRESH를 조금 더 우선하세요.
             - balanceScore가 -2 이하이면 MY를 조금 더 우선하세요.
-            - -1, 0, 1 구간이면 기본 설계를 유지하세요.
             
             - skinRecovery.enabled는 skinRecoveryAvailableSlots 존재 여부를 기준으로 결정하세요.
             - skinRecoveryAvailableSlots가 비어 있으면 반드시 skinRecovery.enabled를 false로 반환하세요.
