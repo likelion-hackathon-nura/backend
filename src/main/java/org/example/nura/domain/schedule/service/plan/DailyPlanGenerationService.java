@@ -19,6 +19,7 @@ import org.example.nura.domain.schedule.service.refresh.RefreshPlanFeedbackBalan
 import org.example.nura.domain.schedule.service.refresh.RefreshPlanValidator;
 import org.example.nura.domain.schedule.service.refresh.SkinRecoverySlotResolver;
 import org.example.nura.domain.user.entity.enums.RestActivityType;
+import org.example.nura.global.error.exception.BaseException;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -202,6 +203,12 @@ public class DailyPlanGenerationService {
                         aiRequest
                 );
 
+        // 원본 AI 응답을 먼저 검증
+        refreshPlanValidator.validate(
+                aiRequest,
+                aiResponse
+        );
+
         int availablePoolMinutes =
                 availableIntervals.stream()
                         .mapToInt(interval ->
@@ -219,16 +226,23 @@ public class DailyPlanGenerationService {
                         availablePoolMinutes
                 );
 
-        refreshPlanValidator.validate(
-                aiRequest,
-                balancedResponse
-        );
+        RefreshPlanAiResponse responseToApply =
+                aiResponse;
+        try {
+            refreshPlanValidator.validate(
+                    aiRequest,
+                    balancedResponse
+            );
+            responseToApply = balancedResponse;
+        } catch (BaseException e) {
+            // 보정 결과가 유효하지 않으면 원본 AI 응답 유지
+        }
 
         // AI 추천을 실제 시간으로 배치
         RefreshAllocationResult refreshAllocation =
                 refreshPlanAllocator.allocate(
                         aiRequest,
-                        balancedResponse
+                        responseToApply
                 );
 
         // 온보딩 RestActivity 기반 회복 블록
