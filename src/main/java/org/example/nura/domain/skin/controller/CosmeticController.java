@@ -12,11 +12,7 @@ import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestPart;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -55,6 +51,16 @@ public class CosmeticController {
     ) {
         RegisteredCosmeticResponse response = cosmeticService.registerCosmetic(userId, request);
         return ApiResponse.success("화장품 등록에 성공했습니다.", response);
+    }
+
+    @Operation(summary = "등록 화장품 삭제", description = "사용자가 등록한 화장품을 삭제합니다.")
+    @DeleteMapping("/{cosmeticId}")
+    public ApiResponse<Void> delete(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long cosmeticId
+    ) {
+        cosmeticService.deleteCosmetic(userId, cosmeticId);
+        return ApiResponse.success("화장품 삭제에 성공했습니다.", null);
     }
 
     private void validateImage(MultipartFile file) {

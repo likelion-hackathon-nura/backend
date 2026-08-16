@@ -6,6 +6,7 @@ import org.example.nura.domain.skin.dto.response.CosmeticOcrResponse;
 import org.example.nura.domain.skin.dto.response.RegisteredCosmeticResponse;
 import org.example.nura.domain.skin.entity.RegisteredCosmetic;
 import org.example.nura.domain.skin.repository.RegisteredCosmeticRepository;
+import org.example.nura.domain.skin.repository.RoutineStepRepository;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;
 import org.example.nura.global.error.ErrorCode;
@@ -70,4 +71,23 @@ public class CosmeticService {
                 savedCosmetic.getCreatedAt()
         );
     }
+
+
+    private final RoutineStepRepository routineStepRepository;
+
+    /**
+     * 등록 화장품 삭제
+     */
+    @Transactional
+    public void deleteCosmetic(Long userId, Long cosmeticId) {
+        RegisteredCosmetic cosmetic = registeredCosmeticRepository.findByIdAndUserId(cosmeticId, userId)
+                .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND, "존재하지 않거나 삭제 권한이 없는 화장품입니다."));
+
+        routineStepRepository.bulkSetCosmeticNull(cosmeticId);
+
+        registeredCosmeticRepository.delete(cosmetic);
+    }
+
+
+
 }

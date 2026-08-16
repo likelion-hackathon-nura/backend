@@ -15,14 +15,14 @@ import java.time.LocalDate;
 
 @Tag(name = "피부 메인", description = "피부 탭 메인 상태 조회 API")
 @RestController
-@RequestMapping("/api/skin")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class SkinMainController {
 
     private final SkinMainService skinMainService;
 
     @Operation(summary = "오늘의 피부 탭 메인 상태 조회", description = "피부 메인 화면 진입 시 필요한 종합 정보를 조회합니다.")
-    @GetMapping("/today")
+    @GetMapping("skin/today")
     public ApiResponse<SkinMainTodayResponse> getTodayMain(
             @AuthenticationPrincipal Long userId
     ) {
