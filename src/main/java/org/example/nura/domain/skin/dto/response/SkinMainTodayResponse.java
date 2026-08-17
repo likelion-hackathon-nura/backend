@@ -1,5 +1,6 @@
 package org.example.nura.domain.skin.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 import org.example.nura.domain.skin.entity.Checkin;
@@ -13,7 +14,12 @@ import java.util.List;
 @Builder
 public class SkinMainTodayResponse {
 
-    private boolean isCheckedIn;
+    @JsonProperty("is_checked_in")
+    private boolean isCheckedIn; // 오늘 퇴근 체크인 완료 여부
+
+    @JsonProperty("is_routine_completed")
+    private boolean isRoutineCompleted; // 오늘 3분 회복 모드 완료 여부
+
     private int streakDays;
     private List<WeeklyRecordDto> weeklyRecords;
     private CheckinSummaryDto checkinSummary;
@@ -22,9 +28,9 @@ public class SkinMainTodayResponse {
     @Getter
     @Builder
     public static class WeeklyRecordDto {
-        private String dayOfWeek; // "MON", "TUE" ...
+        private String dayOfWeek;
         private LocalDate date;
-        private String status;    // "COMPLETED", "NONE"
+        private String status;
     }
 
     @Getter
