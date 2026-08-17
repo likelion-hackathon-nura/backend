@@ -14,11 +14,17 @@ import org.example.nura.domain.skin.dto.response.SkinRoutineStepResponse;
 import org.example.nura.domain.skin.entity.Checkin;
 import org.example.nura.domain.skin.entity.RoutineStep;
 import org.example.nura.domain.skin.entity.SkinRoutine;
+import org.example.nura.domain.skin.entity.SkinRoutineFeedback;
 import org.example.nura.domain.skin.entity.enums.RecoveryLevel;
 import org.example.nura.domain.skin.entity.enums.SkinAnalysisLevel;
 import org.example.nura.domain.skin.entity.enums.SkinCareType;
 import org.example.nura.domain.skin.repository.RoutineStepRepository;
+import org.example.nura.domain.skin.repository.SkinRoutineFeedbackRepository;
 import org.example.nura.domain.skin.repository.SkinRoutineRepository;
+import org.example.nura.domain.user.entity.UserSkin;
+import org.example.nura.domain.user.entity.UserSkinConcern;
+import org.example.nura.domain.user.repository.UserSkinConcernRepository;
+import org.example.nura.domain.user.repository.UserSkinRepository;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +41,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -44,6 +51,9 @@ public class SkinRoutineService {
     private final SkinRoutineRepository skinRoutineRepository;
     private final RoutineStepRepository routineStepRepository;
     private final RegisteredCosmeticRepository registeredCosmeticRepository;
+    private final UserSkinRepository userSkinRepository;
+    private final UserSkinConcernRepository userSkinConcernRepository;
+    private final SkinRoutineFeedbackRepository skinRoutineFeedbackRepository;
     private final TransactionTemplate transactionTemplate;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -75,8 +85,16 @@ public class SkinRoutineService {
         SkinRoutine routine = findTodayRoutineEntity(userId);
         Checkin checkin = routine.getCheckin();
 
-        List<RegisteredCosmetic> cosmetics =
-                registeredCosmeticRepository.findByUserId(userId);
+        // 1. 유저 온보딩 체질 프로필 데이터 조회
+        UserSkin userSkin = userSkinRepository.findByUserId(userId).orElse(null);
+        List<UserSkinConcern> concerns = (userSkin != null)
+                ? userSkinConcernRepository.findAllByUserSkinId(userSkin.getId())
+                : List.of();
+
+        // 2. 유저의 최신 3분 회복 모드 피드백 3건 조회
+        List<SkinRoutineFeedback> recentFeedbacks = skinRoutineFeedbackRepository.findTop3ByUserIdOrderByCreatedAtDesc(userId);
+
+        List<RegisteredCosmetic> cosmetics = registeredCosmeticRepository.findByUserId(userId);
 
         int stepCount = resolveStepCount(routine.getRecoveryLevel());
         List<SkinCareType> careTypes = suggestCareTypes(checkin, stepCount);
@@ -90,6 +108,9 @@ public class SkinRoutineService {
 
             LlmStepContent content = generateStepContent(
                     checkin,
+                    userSkin,
+                    concerns,
+                    recentFeedbacks,
                     careType,
                     cosmetic,
                     stepOrder
@@ -264,6 +285,9 @@ public class SkinRoutineService {
 
     private LlmStepContent generateStepContent(
             Checkin checkin,
+            UserSkin userSkin,
+            List<UserSkinConcern> concerns,
+            List<SkinRoutineFeedback> recentFeedbacks,
             SkinCareType careType,
             RegisteredCosmetic cosmetic,
             int stepOrder
@@ -277,19 +301,38 @@ public class SkinRoutineService {
             String cosmeticType = (cosmetic != null) ? cosmetic.getCosmeticType().name() : "자유 선택";
             String cosmeticIngredients = (cosmetic != null) ? cosmetic.getCoreIngredients() : "정보 없음";
 
+            String skinTypeStr = (userSkin != null) ? userSkin.getSkinType().name() : "정보 없음";
+            String sensitivityStr = (userSkin != null) ? userSkin.getSensitivityLevel().name() : "정보 없음";
+            String concernsStr = concerns.isEmpty()
+                    ? "없음"
+                    : concerns.stream().map(c -> c.getConcernType().name()).collect(Collectors.joining(", "));
+
+            String feedbackStr = recentFeedbacks.isEmpty()
+                    ? "이전 피드백 없음"
+                    : recentFeedbacks.stream()
+                      .map(f -> "- " + f.getContents())
+                      .collect(Collectors.joining("\n"));
+
             String prompt = "다음 정보를 기반으로 3분 회복 루틴의 한 단계를 JSON으로 작성하세요."
                     + "\n반환 형식: {\"title\":\"...\",\"description\":\"...\",\"precautions\":\"...\",\"recommended_ingredients\":\"...\",\"product_features\":[\"...\",\"...\"],\"reason\":\"...\"}"
                     + "\n- title: '먼저 피부 자극을 진정시켜볼게요.' 같이 친근하고 부드러운 케어 목표 1문장."
-                    + "\n- description: 체크인 결과(당김, 붉은기 등)를 언급하고 왜 이 케어가 필요한지 친절하게 설명하는 2~3단락 문장 (줄바꿈 \\n 포함)."
+                    + "\n- description: 체크인 상태, 유저 피부타입, 과거 3분 회복모드 피드백을 반영하여 왜 이 케어가 필요한지 설명하는 2~3단락 문장 (줄바꿈 \\n 포함)."
                     + "\n- precautions: 체크리스트용 2~3개 문장을 줄바꿈(\\n)으로 구분하여 작성."
-                    + "\n- recommended_ingredients: 해당 케어 단계에 적합한 3개 성분을 쉼표로 구분 (예: 병풀추출물(CICA), 판테놀, 알란토인)."
-                    + "\n- product_features: '사용할 제품' 카드의 체크포인트에 들어갈 2문장을 배열로 작성 (예: [\"민감성 피부에 적합한 저자극 진정 세럼\", \"병풀추출물, 판테놀 함유\"])."
+                    + "\n- recommended_ingredients: 해당 케어 단계에 적합한 3개 성분을 쉼표로 구분."
+                    + "\n- product_features: '사용할 제품' 카드의 체크포인트에 들어갈 2문장을 배열로 작성."
+                    + "\n\n[유저 기본 체질 데이터 (온보딩)]"
+                    + "\n- 피부 타입: " + skinTypeStr
+                    + "\n- 민감도: " + sensitivityStr
+                    + "\n- 주요 피부 고민: " + concernsStr
+                    + "\n\n[유저의 과거 3분 회복 모드 피드백 (개선 반영 요구사항)]"
+                    + "\n" + feedbackStr
+                    + "\n\n[오늘의 체크인 상태]"
                     + "\n- step_order: " + stepOrder
                     + "\n- care_type: " + careType
                     + "\n- cosmetic_name: " + cosmeticName
                     + "\n- cosmetic_type: " + cosmeticType
                     + "\n- cosmetic_ingredients: " + cosmeticIngredients
-                    + "\n- acne_level: " + safeLevel(checkin.getAnalyzedTrouble())
+                    + "\n- trouble_level: " + safeLevel(checkin.getAnalyzedTrouble())
                     + "\n- redness_level: " + safeLevel(checkin.getAnalyzedRedness())
                     + "\n- moisture_level: " + safeLevel(checkin.getAnalyzedMoisture())
                     + "\n- oiliness_level: " + safeLevel(checkin.getAnalyzedOiliness());
@@ -299,7 +342,7 @@ public class SkinRoutineService {
                     "temperature", 0.4,
                     "response_format", Map.of("type", "json_object"),
                     "messages", List.of(
-                            Map.of("role", "system", "content", "너는 스킨케어 루틴 코치다. 반드시 요청된 JSON 포맷으로만 한국어로 간결하게 답한다."),
+                            Map.of("role", "system", "content", "너는 스킨케어 루틴 코치다. 유저의 피부 체질 데이터와 과거 3분 회복모드 피드백을 반드시 고려하여 맞춤형 문구와 성분을 제시하라. 반드시 요청된 JSON 포맷으로만 한국어로 답변한다."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
@@ -378,7 +421,6 @@ public class SkinRoutineService {
         );
     }
 
-    // ✅ 불필요한 stepOrder 매개변수 제거
     private String fallbackTitle(SkinCareType careType) {
         return switch (careType) {
             case SOOTHING -> "먼저 피부 자극을 진정시켜볼게요.";
@@ -585,6 +627,7 @@ public class SkinRoutineService {
             String reason
     ) {
     }
+
     private record StepSaveItem(
             int stepOrder,
             SkinCareType careType,
