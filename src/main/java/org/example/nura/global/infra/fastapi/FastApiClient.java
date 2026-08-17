@@ -3,7 +3,7 @@ package org.example.nura.global.infra.fastapi;
 import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.skin.dto.response.FastApiOcrResponse;
 import org.example.nura.domain.skin.dto.response.FastApiSkinAnalysisResponse;
-import org.example.nura.domain.skin.entity.enums.CosmeticType;
+import org.example.nura.domain.cosmetics.entity.enums.CosmeticType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;

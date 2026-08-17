@@ -1,6 +1,6 @@
-package org.example.nura.domain.skin.dto.response;
+package org.example.nura.domain.cosmetics.dto.response;
 
-import org.example.nura.domain.skin.entity.enums.CosmeticType;
+import org.example.nura.domain.cosmetics.entity.enums.CosmeticType;
 
 import java.time.LocalDateTime;
 

@@ -1,4 +1,4 @@
-package org.example.nura.domain.skin.entity.enums;
+package org.example.nura.domain.cosmetics.entity.enums;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;

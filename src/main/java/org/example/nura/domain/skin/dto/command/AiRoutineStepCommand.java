@@ -1,6 +1,6 @@
 package org.example.nura.domain.skin.dto.command;
 
-import org.example.nura.domain.skin.entity.enums.CosmeticType;
+import org.example.nura.domain.cosmetics.entity.enums.CosmeticType;
 import org.example.nura.domain.skin.entity.enums.SkinCareType;
 
 import java.util.List;

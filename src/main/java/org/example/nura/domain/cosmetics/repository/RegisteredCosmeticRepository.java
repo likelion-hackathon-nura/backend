@@ -1,6 +1,6 @@
-package org.example.nura.domain.skin.repository;
+package org.example.nura.domain.cosmetics.repository;
 
-import org.example.nura.domain.skin.entity.RegisteredCosmetic;
+import org.example.nura.domain.cosmetics.entity.RegisteredCosmetic;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

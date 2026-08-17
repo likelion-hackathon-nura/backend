@@ -1,7 +1,7 @@
 package org.example.nura.domain.skin.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.example.nura.domain.skin.entity.enums.CosmeticType;
+import org.example.nura.domain.cosmetics.entity.enums.CosmeticType;
 import org.example.nura.domain.skin.entity.enums.SkinCareType;
 
 public record SkinRoutineStepResponse(
