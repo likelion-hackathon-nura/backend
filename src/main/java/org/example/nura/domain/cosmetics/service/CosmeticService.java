@@ -1,14 +1,15 @@
-package org.example.nura.domain.skin.service;
+package org.example.nura.domain.cosmetics.service;
 
 import lombok.RequiredArgsConstructor;
-import org.example.nura.domain.skin.dto.request.RegisteredCosmeticCreateRequest;
-import org.example.nura.domain.skin.dto.response.CosmeticOcrResponse;
-import org.example.nura.domain.skin.dto.response.RegisteredCosmeticListResponse;
-import org.example.nura.domain.skin.dto.response.RegisteredCosmeticListResponse.CosmeticDetail;
+import org.example.nura.domain.cosmetics.dto.request.RegisteredCosmeticCreateRequest;
+import org.example.nura.domain.cosmetics.dto.response.CosmeticOcrResponse;
+import org.example.nura.domain.cosmetics.dto.response.RegisteredCosmeticListResponse;
+import org.example.nura.domain.cosmetics.dto.response.RegisteredCosmeticListResponse.CosmeticDetail;
+import org.example.nura.domain.skin.service.OpenAiService;
 import org.springframework.util.StringUtils;
-import org.example.nura.domain.skin.dto.response.RegisteredCosmeticResponse;
-import org.example.nura.domain.skin.entity.RegisteredCosmetic;
-import org.example.nura.domain.skin.repository.RegisteredCosmeticRepository;
+import org.example.nura.domain.cosmetics.dto.response.RegisteredCosmeticResponse;
+import org.example.nura.domain.cosmetics.entity.RegisteredCosmetic;
+import org.example.nura.domain.cosmetics.repository.RegisteredCosmeticRepository;
 import org.example.nura.domain.skin.repository.RoutineStepRepository;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.domain.user.repository.UserRepository;

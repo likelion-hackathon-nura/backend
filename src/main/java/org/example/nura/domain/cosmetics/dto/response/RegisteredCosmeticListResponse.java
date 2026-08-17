@@ -1,8 +1,8 @@
-package org.example.nura.domain.skin.dto.response;
+package org.example.nura.domain.cosmetics.dto.response;
 
 import lombok.Builder;
 import lombok.Getter;
-import org.example.nura.domain.skin.entity.RegisteredCosmetic;
+import org.example.nura.domain.cosmetics.entity.RegisteredCosmetic;
 
 import java.time.LocalDate;
 import java.util.List;

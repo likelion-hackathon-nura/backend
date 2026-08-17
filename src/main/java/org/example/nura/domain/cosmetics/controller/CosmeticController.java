@@ -1,13 +1,13 @@
-package org.example.nura.domain.skin.controller;
+package org.example.nura.domain.cosmetics.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.example.nura.domain.skin.dto.request.RegisteredCosmeticCreateRequest;
-import org.example.nura.domain.skin.dto.response.CosmeticOcrResponse;
-import org.example.nura.domain.skin.dto.response.RegisteredCosmeticListResponse;
-import org.example.nura.domain.skin.dto.response.RegisteredCosmeticResponse;
-import org.example.nura.domain.skin.service.CosmeticService;
+import org.example.nura.domain.cosmetics.dto.request.RegisteredCosmeticCreateRequest;
+import org.example.nura.domain.cosmetics.dto.response.CosmeticOcrResponse;
+import org.example.nura.domain.cosmetics.dto.response.RegisteredCosmeticListResponse;
+import org.example.nura.domain.cosmetics.dto.response.RegisteredCosmeticResponse;
+import org.example.nura.domain.cosmetics.service.CosmeticService;
 import org.example.nura.global.common.ApiResponse;
 import org.example.nura.global.error.ErrorCode;
 import org.example.nura.global.error.exception.BaseException;

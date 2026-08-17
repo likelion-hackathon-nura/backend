@@ -16,6 +16,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.example.nura.domain.cosmetics.entity.RegisteredCosmetic;
 import org.example.nura.domain.skin.entity.enums.SkinCareType;
 import org.example.nura.global.common.BaseTimeEntity;
 
