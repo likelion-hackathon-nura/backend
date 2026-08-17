@@ -1,4 +1,5 @@
-package org.example.nura.domain.skin.entity;
+package org.example.nura.domain.cosmetics.entity
+;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,7 +16,7 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.example.nura.domain.skin.entity.enums.CosmeticType;
+import org.example.nura.domain.cosmetics.entity.enums.CosmeticType;
 import org.example.nura.domain.user.entity.User;
 import org.example.nura.global.common.BaseTimeEntity;
 

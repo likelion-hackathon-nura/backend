@@ -14,7 +14,7 @@ import org.example.nura.domain.schedule.repository.ScheduleFeedbackRepository;
 import org.example.nura.domain.schedule.repository.TimeBlockRepository;
 import org.example.nura.domain.schedule.entity.DailyTimeAllocation;
 import org.example.nura.domain.skin.repository.CheckinRepository;
-import org.example.nura.domain.skin.repository.RegisteredCosmeticRepository;
+import org.example.nura.domain.cosmetics.repository.RegisteredCosmeticRepository;
 import org.example.nura.domain.skin.repository.RoutineStepRepository;
 import org.example.nura.domain.skin.repository.SkinRoutineRepository;
 import org.example.nura.domain.user.entity.User;
