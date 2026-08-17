@@ -21,6 +21,7 @@ public interface DutyScheduleRepository
             LocalDate endDate
     );
 
+
     boolean existsByUserIdAndDate(
             Long userId,
             LocalDate date
