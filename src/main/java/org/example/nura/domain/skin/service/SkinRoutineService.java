@@ -421,6 +421,18 @@ public class SkinRoutineService {
         };
     }
 
+    private String getCareTypeEmoji(SkinCareType careType) {
+        if (careType == null) return "✨";
+        return switch (careType) {
+            case SOOTHING -> "🌿";
+            case HYDRATION -> "💧";
+            case MOISTURIZING -> "🧴";
+            case BARRIER_CARE -> "🛡️";
+            case OIL_CONTROL -> "🍃";
+            case TROUBLE_CARE -> "🚨";
+        };
+    }
+
     private List<String> fallbackProductFeatures(SkinCareType careType, RegisteredCosmetic cosmetic) {
         if (cosmetic != null && cosmetic.getCoreIngredients() != null && !cosmetic.getCoreIngredients().isBlank()) {
             return List.of(
@@ -469,6 +481,7 @@ public class SkinRoutineService {
                     step.getStepOrder(),
                     step.getCareType(),
                     getCareTypeKr(step.getCareType()),
+                    getCareTypeEmoji(step.getCareType()),
                     step.getTitle(),
                     step.getDescription(),
                     getRecommendedIngredientDescription(step.getCareType()),

@@ -10,6 +10,7 @@ public record SkinRoutineStepResponse(
         @JsonProperty("step_order") Integer stepOrder,
         @JsonProperty("care_type") SkinCareType careType,
         @JsonProperty("care_type_kr") String careTypeKr,
+        @JsonProperty("care_type_emoji") String careTypeEmoji,
 
         String title,
         String description,
