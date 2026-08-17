@@ -31,16 +31,17 @@ public class SkinMainService {
         Optional<Checkin> todayCheckinOpt = checkinRepository.findByUserIdAndDate(userId, today);
         boolean isCheckedIn = todayCheckinOpt.isPresent();
 
-        // 2. 연속 체크인 일수(Streak) 계산 (8일, 9일 제한 없이 누적)
+        // 2. 연속 체크인 일수(Streak) 계산
         int streakDays = calculateStreak(userId, today, isCheckedIn);
 
         // 3. 이번 주(월~일) 체크인 기록 생성
         List<WeeklyRecordDto> weeklyRecords = getWeeklyRecords(userId, today);
 
-        // 4. 체크인 안 했으면 하단 상세 데이터 없이 반환 (자물쇠 UI용)
+        // 4. 체크인을 아직 안 한 경우
         if (!isCheckedIn) {
             return SkinMainTodayResponse.builder()
                     .isCheckedIn(false)
+                    .isRoutineCompleted(false)
                     .streakDays(streakDays)
                     .weeklyRecords(weeklyRecords)
                     .checkinSummary(null)
@@ -48,7 +49,7 @@ public class SkinMainService {
                     .build();
         }
 
-        // 5. 체크인 완료 시: 체크인 요약 정보 및 회복 루틴 정보 결합
+        // 5. 체크인 완료 시: 오늘 체크인 및 루틴 정보 조회
         Checkin checkin = todayCheckinOpt.get();
         SkinMainTodayResponse.CheckinSummaryDto checkinSummary =
                 SkinMainTodayResponse.CheckinSummaryDto.from(checkin);
@@ -59,8 +60,12 @@ public class SkinMainService {
         SkinMainTodayResponse.RoutineSummaryDto routineSummary =
                 routineOpt.map(SkinMainTodayResponse.RoutineSummaryDto::from).orElse(null);
 
+        // 오늘 3분 회복 모드 완료 여부 판단
+        boolean isRoutineCompleted = routineOpt.map(SkinRoutine::isCompleted).orElse(false);
+
         return SkinMainTodayResponse.builder()
                 .isCheckedIn(true)
+                .isRoutineCompleted(isRoutineCompleted)
                 .streakDays(streakDays)
                 .weeklyRecords(weeklyRecords)
                 .checkinSummary(checkinSummary)
@@ -70,7 +75,6 @@ public class SkinMainService {
 
     private int calculateStreak(Long userId, LocalDate today, boolean isCheckedInToday) {
         int streak = 0;
-        // 오늘 체크인을 이미 했으면 오늘부터 카운트, 안 했으면 어제부터 과거 탐색
         LocalDate targetDate = isCheckedInToday ? today : today.minusDays(1);
 
         while (checkinRepository.existsByUserIdAndDate(userId, targetDate)) {
@@ -98,7 +102,7 @@ public class SkinMainService {
             boolean isChecked = checkedDates.contains(date);
 
             records.add(WeeklyRecordDto.builder()
-                    .dayOfWeek(date.getDayOfWeek().name().substring(0, 3)) // MON, TUE ...
+                    .dayOfWeek(date.getDayOfWeek().name().substring(0, 3))
                     .date(date)
                     .status(isChecked ? "COMPLETED" : "NONE")
                     .build());
