@@ -19,11 +19,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
-// 클래스 레벨의 @Transactional(readOnly = true) 제거!
 public class CheckinService {
 
     private final UserRepository userRepository;
@@ -32,29 +32,15 @@ public class CheckinService {
     private final SkinAnalysisService skinAnalysisService;
     private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 단순 상태 조회 (읽기 전용 트랜잭션 개별 적용)
-     */
     @Transactional(readOnly = true)
-    public CheckinStatusResponse getStatus(
-            Long userId,
-            LocalDate date
-    ) {
-        LocalDate targetDate = date == null ? LocalDate.now() : date;
+    public CheckinStatusResponse getStatus(Long userId, LocalDate date) {
+        LocalDate targetDate = (date == null) ? LocalDate.now() : date;
 
-        Checkin existing = checkinRepository.findByUserIdAndDate(
-                        userId,
-                        targetDate
-                )
+        Checkin existing = checkinRepository.findByUserIdAndDate(userId, targetDate)
                 .orElse(null);
 
         if (existing == null) {
-            return new CheckinStatusResponse(
-                    targetDate,
-                    true,
-                    null,
-                    null
-            );
+            return new CheckinStatusResponse(targetDate, true, null, null);
         }
 
         return new CheckinStatusResponse(
@@ -65,19 +51,10 @@ public class CheckinService {
         );
     }
 
-    /**
-     * 체크인 생성 (메서드 전체에는 트랜잭션이 없음 -> AI 통신 시 DB 커넥션 안 잡음)
-     */
-    public CheckinResponse create(
-            Long userId,
-            CheckinCreateRequest request
-    ) {
+    public CheckinResponse create(Long userId, CheckinCreateRequest request) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
-                );
+                .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        // 1. 애플리케이션 1차 중복 검사 (단순 조회)
         if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
             throw new BaseException(
                     ErrorCode.DUPLICATE_RESOURCE,
@@ -88,20 +65,19 @@ public class CheckinService {
         int tightnessScore = request.tightness().toScore();
         int rednessScore = request.redness().toScore();
 
-        String photoUrl = null;
-
-        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 외부 통신 중 Connection 점유 없음!)
+        // 1회성 AI 분석 호출 (사진은 전달만 하고 DB 저장은 하지 않음)
         SkinAnalysisService.AnalysisResult analysisResult =
                 skinAnalysisService.analyze(
+                        userId,
+                        request.date(),
                         request.photo(),
                         request.fatigue(),
                         tightnessScore,
                         rednessScore
                 );
 
-        // 4. DB 저장은 TransactionTemplate을 통해 '순수 쓰기 트랜잭션'으로만 실행
         return transactionTemplate.execute(status ->
-                saveCheckinLogic(user, request, tightnessScore, rednessScore, photoUrl, analysisResult)
+                saveCheckinLogic(user, request, tightnessScore, rednessScore, analysisResult)
         );
     }
 
@@ -110,7 +86,6 @@ public class CheckinService {
             CheckinCreateRequest request,
             int tightnessScore,
             int rednessScore,
-            String photoUrl,
             SkinAnalysisService.AnalysisResult analysisResult
     ) {
         try {
@@ -119,8 +94,7 @@ public class CheckinService {
                     request.date(),
                     request.fatigue(),
                     tightnessScore,
-                    rednessScore,
-                    photoUrl
+                    rednessScore
             );
 
             checkin.updateAnalysis(
@@ -128,7 +102,11 @@ public class CheckinService {
                     analysisResult.analyzedMoisture(),
                     analysisResult.analyzedOiliness(),
                     analysisResult.analyzedTrouble(),
-                    analysisResult.aiComment()
+                    analysisResult.aiComment(),
+                    analysisResult.rednessComment(),
+                    analysisResult.moistureComment(),
+                    analysisResult.troubleComment(),
+                    analysisResult.tags()
             );
 
             Checkin savedCheckin = checkinRepository.save(checkin);
@@ -139,11 +117,7 @@ public class CheckinService {
                     rednessScore
             );
 
-            SkinRoutine skinRoutine = SkinRoutine.create(
-                    savedCheckin,
-                    recoveryLevel
-            );
-
+            SkinRoutine skinRoutine = SkinRoutine.create(savedCheckin, recoveryLevel);
             skinRoutineRepository.save(skinRoutine);
 
             return new CheckinResponse(
@@ -169,11 +143,7 @@ public class CheckinService {
         }
     }
 
-    private RecoveryLevel deriveRecoveryLevel(
-            int fatigue,
-            int tightnessScore,
-            int rednessScore
-    ) {
+    private RecoveryLevel deriveRecoveryLevel(int fatigue, int tightnessScore, int rednessScore) {
         int total = fatigue + tightnessScore + rednessScore;
 
         if (total <= 5) {
@@ -185,10 +155,7 @@ public class CheckinService {
         }
     }
 
-
-    private SkinAnalysisLevel defaultUnknown(
-            SkinAnalysisLevel value
-    ) {
-        return value == null ? SkinAnalysisLevel.UNKNOWN : value;
+    private SkinAnalysisLevel defaultUnknown(SkinAnalysisLevel value) {
+        return (value == null) ? SkinAnalysisLevel.UNKNOWN : value;
     }
 }

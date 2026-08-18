@@ -45,9 +45,7 @@ public class Checkin extends BaseTimeEntity {
     @JoinColumn(
             name = "user_id",
             nullable = false,
-            foreignKey = @ForeignKey(
-                    name = "fk_checkin_user"
-            )
+            foreignKey = @ForeignKey(name = "fk_checkin_user")
     )
     private User user;
 
@@ -62,9 +60,6 @@ public class Checkin extends BaseTimeEntity {
 
     @Column(name = "redness", nullable = false)
     private Integer redness;
-
-    @Column(name = "photo_url", length = 500)
-    private String photoUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "analyzed_redness", length = 10)
@@ -85,38 +80,47 @@ public class Checkin extends BaseTimeEntity {
     @Column(name = "ai_comment", columnDefinition = "TEXT")
     private String aiComment;
 
-    private Checkin(
-            User user,
-            LocalDate date,
-            Integer fatigue,
-            Integer tightness,
-            Integer redness,
-            String photoUrl
-    ) {
+    @Column(name = "redness_comment", columnDefinition = "TEXT")
+    private String rednessComment;
+
+    @Column(name = "moisture_comment", columnDefinition = "TEXT")
+    private String moistureComment;
+
+    @Column(name = "trouble_comment", columnDefinition = "TEXT")
+    private String troubleComment;
+
+    @Column(name = "tags", length = 100)
+    private String tags;
+
+    private Checkin(User user, LocalDate date, Integer fatigue, Integer tightness, Integer redness) {
         this.user = user;
         this.date = date;
         this.fatigue = fatigue;
         this.tightness = tightness;
         this.redness = redness;
-        this.photoUrl = photoUrl;
     }
 
-    public static Checkin create(
-            User user,
-            LocalDate date,
-            Integer fatigue,
-            Integer tightness,
-            Integer redness,
-            String photoUrl
-    ) {
-        return new Checkin(
-                user,
-                date,
-                fatigue,
-                tightness,
-                redness,
-                photoUrl
-        );
+    public static Checkin create(User user, LocalDate date, Integer fatigue, Integer tightness, Integer redness) {
+        validateInputs(user, date, fatigue, tightness, redness);
+        return new Checkin(user, date, fatigue, tightness, redness);
+    }
+
+    private static void validateInputs(User user, LocalDate date, Integer fatigue, Integer tightness, Integer redness) {
+        if (user == null) {
+            throw new IllegalArgumentException("사용자 정보는 필수입니다.");
+        }
+        if (date == null) {
+            throw new IllegalArgumentException("체크인 날짜는 필수입니다.");
+        }
+        if (fatigue == null || fatigue < 1 || fatigue > 5) {
+            throw new IllegalArgumentException("피로도는 1~5 사이의 정수이어야 합니다.");
+        }
+        if (tightness == null || tightness < 1 || tightness > 5) {
+            throw new IllegalArgumentException("피부 당김 점수는 1~5 사이의 정수이어야 합니다.");
+        }
+        if (redness == null || redness < 1 || redness > 5) {
+            throw new IllegalArgumentException("붉은기 점수는 1~5 사이의 정수이어야 합니다.");
+        }
     }
 
     public void updateAnalysis(
@@ -124,12 +128,20 @@ public class Checkin extends BaseTimeEntity {
             SkinAnalysisLevel analyzedMoisture,
             SkinAnalysisLevel analyzedOiliness,
             SkinAnalysisLevel analyzedTrouble,
-            String aiComment
+            String aiComment,
+            String rednessComment,
+            String moistureComment,
+            String troubleComment,
+            String tags
     ) {
         this.analyzedRedness = analyzedRedness;
         this.analyzedMoisture = analyzedMoisture;
         this.analyzedOiliness = analyzedOiliness;
         this.analyzedTrouble = analyzedTrouble;
         this.aiComment = aiComment;
+        this.rednessComment = rednessComment;
+        this.moistureComment = moistureComment;
+        this.troubleComment = troubleComment;
+        this.tags = tags;
     }
 }
