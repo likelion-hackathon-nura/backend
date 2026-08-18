@@ -33,25 +33,14 @@ public class CheckinService {
     private final TransactionTemplate transactionTemplate;
 
     @Transactional(readOnly = true)
-    public CheckinStatusResponse getStatus(
-            Long userId,
-            LocalDate date
-    ) {
-        LocalDate targetDate = date == null ? LocalDate.now() : date;
+    public CheckinStatusResponse getStatus(Long userId, LocalDate date) {
+        LocalDate targetDate = (date == null) ? LocalDate.now() : date;
 
-        Checkin existing = checkinRepository.findByUserIdAndDate(
-                        userId,
-                        targetDate
-                )
+        Checkin existing = checkinRepository.findByUserIdAndDate(userId, targetDate)
                 .orElse(null);
 
         if (existing == null) {
-            return new CheckinStatusResponse(
-                    targetDate,
-                    true,
-                    null,
-                    null
-            );
+            return new CheckinStatusResponse(targetDate, true, null, null);
         }
 
         return new CheckinStatusResponse(
@@ -62,14 +51,9 @@ public class CheckinService {
         );
     }
 
-    public CheckinResponse create(
-            Long userId,
-            CheckinCreateRequest request
-    ) {
+    public CheckinResponse create(Long userId, CheckinCreateRequest request) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
-                );
+                .orElseThrow(() -> new BaseException(ErrorCode.RESOURCE_NOT_FOUND));
 
         if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
             throw new BaseException(
@@ -81,9 +65,7 @@ public class CheckinService {
         int tightnessScore = request.tightness().toScore();
         int rednessScore = request.redness().toScore();
 
-        String photoUrl = null;
-
-        // 외부 AI 분석 (근무 정보, 사진 정량 분석, GPT 코멘트/태그 통합 처리)
+        // 1회성 AI 분석 호출 (사진은 전달만 하고 DB 저장은 하지 않음)
         SkinAnalysisService.AnalysisResult analysisResult =
                 skinAnalysisService.analyze(
                         userId,
@@ -95,7 +77,7 @@ public class CheckinService {
                 );
 
         return transactionTemplate.execute(status ->
-                saveCheckinLogic(user, request, tightnessScore, rednessScore, photoUrl, analysisResult)
+                saveCheckinLogic(user, request, tightnessScore, rednessScore, analysisResult)
         );
     }
 
@@ -104,7 +86,6 @@ public class CheckinService {
             CheckinCreateRequest request,
             int tightnessScore,
             int rednessScore,
-            String photoUrl,
             SkinAnalysisService.AnalysisResult analysisResult
     ) {
         try {
@@ -113,8 +94,7 @@ public class CheckinService {
                     request.date(),
                     request.fatigue(),
                     tightnessScore,
-                    rednessScore,
-                    photoUrl
+                    rednessScore
             );
 
             checkin.updateAnalysis(
@@ -137,11 +117,7 @@ public class CheckinService {
                     rednessScore
             );
 
-            SkinRoutine skinRoutine = SkinRoutine.create(
-                    savedCheckin,
-                    recoveryLevel
-            );
-
+            SkinRoutine skinRoutine = SkinRoutine.create(savedCheckin, recoveryLevel);
             skinRoutineRepository.save(skinRoutine);
 
             return new CheckinResponse(
@@ -167,11 +143,7 @@ public class CheckinService {
         }
     }
 
-    private RecoveryLevel deriveRecoveryLevel(
-            int fatigue,
-            int tightnessScore,
-            int rednessScore
-    ) {
+    private RecoveryLevel deriveRecoveryLevel(int fatigue, int tightnessScore, int rednessScore) {
         int total = fatigue + tightnessScore + rednessScore;
 
         if (total <= 5) {
@@ -183,9 +155,7 @@ public class CheckinService {
         }
     }
 
-    private SkinAnalysisLevel defaultUnknown(
-            SkinAnalysisLevel value
-    ) {
-        return value == null ? SkinAnalysisLevel.UNKNOWN : value;
+    private SkinAnalysisLevel defaultUnknown(SkinAnalysisLevel value) {
+        return (value == null) ? SkinAnalysisLevel.UNKNOWN : value;
     }
 }
