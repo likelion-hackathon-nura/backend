@@ -1,6 +1,5 @@
 package org.example.nura.domain.skin.dto.response;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
@@ -23,12 +22,8 @@ public class SkinMainTodayResponse {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    @JsonProperty("isCheckedIn")
     private boolean isCheckedIn;
-
-    @JsonProperty("isRoutineCompleted")
     private boolean isRoutineCompleted;
-
     private int streakDays;
     private List<WeeklyRecordDto> weeklyRecords;
     private CheckinSummaryDto checkinSummary;
@@ -62,12 +57,16 @@ public class SkinMainTodayResponse {
                     ? Arrays.stream(checkin.getTags().split(",")).map(String::trim).toList()
                     : List.of("근무 피로 누적", "진정과 보습 중심");
 
+            String rednessLevelStr = checkin.getAnalyzedRedness() != null ? checkin.getAnalyzedRedness().name() : "NORMAL";
+            String moistureLevelStr = checkin.getAnalyzedMoisture() != null ? checkin.getAnalyzedMoisture().name() : "NORMAL";
+            String troubleLevelStr = checkin.getAnalyzedTrouble() != null ? checkin.getAnalyzedTrouble().name() : "NORMAL";
+
             List<AnalysisDetailDto> details = List.of(
-                    new AnalysisDetailDto("붉은기", checkin.getAnalyzedRedness().name(),
+                    new AnalysisDetailDto("붉은기", rednessLevelStr,
                             checkin.getRednessComment() != null ? checkin.getRednessComment() : "붉은기 상태가 양호합니다."),
-                    new AnalysisDetailDto("수분 부족", checkin.getAnalyzedMoisture().name(),
+                    new AnalysisDetailDto("수분 부족", moistureLevelStr,
                             checkin.getMoistureComment() != null ? checkin.getMoistureComment() : "충분한 수분 케어가 권장됩니다."),
-                    new AnalysisDetailDto("트러블 징후", checkin.getAnalyzedTrouble().name(),
+                    new AnalysisDetailDto("트러블 징후", troubleLevelStr,
                             checkin.getTroubleComment() != null ? checkin.getTroubleComment() : "트러블 위험도가 낮습니다.")
             );
 
@@ -76,7 +75,7 @@ public class SkinMainTodayResponse {
                     .tightness(checkin.getTightness())
                     .redness(checkin.getRedness())
                     .analyzedRedness(checkin.getAnalyzedRedness())
-                    .analyzedMoisture(checkin.getAnlyzedMoisture())
+                    .analyzedMoisture(checkin.getAnalyzedMoisture()) // 오탈자 수정: getAnlyzedMoisture -> getAnalyzedMoisture
                     .analyzedOiliness(checkin.getAnalyzedOiliness())
                     .analyzedTrouble(checkin.getAnalyzedTrouble())
                     .aiComment(checkin.getAiComment())
@@ -110,7 +109,7 @@ public class SkinMainTodayResponse {
 
             return RoutineSummaryDto.builder()
                     .routineId(routine.getId())
-                    .recoveryLevel(routine.getRecoveryLevel().name())
+                    .recoveryLevel(routine.getRecoveryLevel() != null ? routine.getRecoveryLevel().name() : null)
                     .completed(routine.isCompleted())
                     .totalSteps(steps.size())
                     .steps(stepDtos)
