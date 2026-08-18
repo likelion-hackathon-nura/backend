@@ -39,6 +39,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -73,7 +74,7 @@ public class SkinRoutineService {
     public void init() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(3));
-        requestFactory.setReadTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(7));
 
         this.openAiClient = RestClient.builder()
                 .baseUrl(openAiBaseUrl)
@@ -94,27 +95,31 @@ public class SkinRoutineService {
         // 2. 유저의 최신 3분 회복 모드 피드백 3건 조회
         List<SkinRoutineFeedback> recentFeedbacks = skinRoutineFeedbackRepository.findTop3ByUserIdOrderByCreatedAtDesc(userId);
 
+        // 3. 유저 등록 화장품 조회
         List<RegisteredCosmetic> cosmetics = registeredCosmeticRepository.findByUserId(userId);
 
-        int stepCount = resolveStepCount(routine.getRecoveryLevel());
+        // 4. 피로도 점수(1~5) 및 RecoveryLevel 기반 전체 스텝 수 결정 (1~4단계)
+        int stepCount = resolveStepCount(routine.getRecoveryLevel(), checkin.getFatigue());
         List<SkinCareType> careTypes = suggestCareTypes(checkin, stepCount);
+
+        // 5. 전체 스텝을 단 1회의 LLM 호출로 유기적으로 연결하여 한 번에 생성
+        List<LlmStepContent> stepContents = generateAllStepsContent(
+                checkin,
+                userSkin,
+                concerns,
+                recentFeedbacks,
+                careTypes
+        );
 
         List<StepSaveItem> stepSaveItems = new ArrayList<>();
 
+        // 6. 생성된 LLM 성분 결과를 바탕으로 유저 화장품 성분 매칭
         for (int i = 0; i < stepCount; i++) {
             int stepOrder = i + 1;
             SkinCareType careType = careTypes.get(i);
-            RegisteredCosmetic cosmetic = pickCosmetic(cosmetics, careType);
+            LlmStepContent content = stepContents.get(i);
 
-            LlmStepContent content = generateStepContent(
-                    checkin,
-                    userSkin,
-                    concerns,
-                    recentFeedbacks,
-                    careType,
-                    cosmetic,
-                    stepOrder
-            );
+            RegisteredCosmetic cosmetic = pickCosmeticByIngredient(cosmetics, careType, content.recommendedIngredients());
 
             stepSaveItems.add(new StepSaveItem(stepOrder, careType, cosmetic, content));
         }
@@ -213,12 +218,18 @@ public class SkinRoutineService {
                 );
     }
 
-    private int resolveStepCount(RecoveryLevel recoveryLevel) {
-        return switch (recoveryLevel) {
-            case LEVEL_1 -> 1;
-            case LEVEL_2 -> 2;
-            case LEVEL_3 -> 3;
-        };
+    private int resolveStepCount(RecoveryLevel recoveryLevel, Integer fatigue) {
+        int fatigueValue = (fatigue != null) ? fatigue : 3;
+
+        if (fatigueValue >= 5) {
+            return 1;
+        } else if (fatigueValue == 4) {
+            return 2;
+        } else if (fatigueValue == 3) {
+            return 3;
+        } else {
+            return (recoveryLevel == RecoveryLevel.LEVEL_3) ? 4 : 3;
+        }
     }
 
     private List<SkinCareType> suggestCareTypes(
@@ -242,11 +253,13 @@ public class SkinRoutineService {
         careTypes.add(SkinCareType.MOISTURIZING);
 
         if (!careTypes.contains(SkinCareType.SOOTHING)) {
-            careTypes.add(0, SkinCareType.SOOTHING); // Java 버전 안정성 위해 add(0, ...) 사용
+            careTypes.addFirst(SkinCareType.SOOTHING); // addFirst로 개선
         }
 
         while (careTypes.size() < stepCount) {
-            if (!careTypes.contains(SkinCareType.HYDRATION)) {
+            if (!careTypes.contains(SkinCareType.BARRIER_CARE) && stepCount >= 4) {
+                careTypes.add(SkinCareType.BARRIER_CARE);
+            } else if (!careTypes.contains(SkinCareType.HYDRATION)) {
                 careTypes.add(SkinCareType.HYDRATION);
             } else {
                 careTypes.add(SkinCareType.MOISTURIZING);
@@ -256,16 +269,35 @@ public class SkinRoutineService {
         return careTypes.subList(0, stepCount);
     }
 
-    private RegisteredCosmetic pickCosmetic(
+    private RegisteredCosmetic pickCosmeticByIngredient(
             List<RegisteredCosmetic> cosmetics,
-            SkinCareType careType
+            SkinCareType careType,
+            String recommendedIngredients
     ) {
         if (cosmetics == null || cosmetics.isEmpty()) {
             return null;
         }
 
-        List<CosmeticType> preferredTypes = preferredCosmeticTypes(careType);
+        if (recommendedIngredients != null && !recommendedIngredients.isBlank()) {
+            List<String> targetIngredients = Arrays.stream(recommendedIngredients.split("[,/]"))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
 
+            for (RegisteredCosmetic cosmetic : cosmetics) {
+                String coreIng = cosmetic.getCoreIngredients() != null ? cosmetic.getCoreIngredients() : "";
+                String allIng = cosmetic.getCosmeticIngredients() != null ? cosmetic.getCosmeticIngredients() : "";
+                String mergedIng = coreIng + " " + allIng;
+
+                for (String target : targetIngredients) {
+                    if (!target.isEmpty() && mergedIng.contains(target)) {
+                        return cosmetic;
+                    }
+                }
+            }
+        }
+
+        List<CosmeticType> preferredTypes = preferredCosmeticTypes(careType);
         return cosmetics.stream()
                 .filter(cosmetic -> preferredTypes.contains(cosmetic.getCosmeticType()))
                 .findFirst()
@@ -283,24 +315,23 @@ public class SkinRoutineService {
         };
     }
 
-    private LlmStepContent generateStepContent(
+    private List<LlmStepContent> generateAllStepsContent(
             Checkin checkin,
             UserSkin userSkin,
             List<UserSkinConcern> concerns,
             List<SkinRoutineFeedback> recentFeedbacks,
-            SkinCareType careType,
-            RegisteredCosmetic cosmetic,
-            int stepOrder
+            List<SkinCareType> careTypes
     ) {
+        int totalSteps = careTypes.size();
+        List<LlmStepContent> defaultList = careTypes.stream()
+                .map(this::fallbackStepContent)
+                .toList();
+
         if (openAiApiKey == null || openAiApiKey.isBlank()) {
-            return fallbackStepContent(careType, cosmetic);
+            return defaultList;
         }
 
         try {
-            String cosmeticName = (cosmetic != null) ? cosmetic.getCosmeticName() : "미등록 (" + careType.name() + " 제품)";
-            String cosmeticType = (cosmetic != null) ? cosmetic.getCosmeticType().name() : "자유 선택";
-            String cosmeticIngredients = (cosmetic != null) ? cosmetic.getCoreIngredients() : "정보 없음";
-
             String skinTypeStr = (userSkin != null) ? userSkin.getSkinType().name() : "정보 없음";
             String sensitivityStr = (userSkin != null) ? userSkin.getSensitivityLevel().name() : "정보 없음";
             String concernsStr = concerns.isEmpty()
@@ -313,36 +344,42 @@ public class SkinRoutineService {
                       .map(f -> "- " + f.getContents())
                       .collect(Collectors.joining("\n"));
 
-            String prompt = "다음 정보를 기반으로 3분 회복 루틴의 한 단계를 JSON으로 작성하세요."
-                    + "\n반환 형식: {\"title\":\"...\",\"description\":\"...\",\"precautions\":\"...\",\"recommended_ingredients\":\"...\",\"product_features\":[\"...\",\"...\"],\"reason\":\"...\"}"
-                    + "\n- title: 현재 진행하는 케어 단계(" + careType + ")의 목표를 나타내는 친근하고 부드러운 1문장 (예: 진정이면 '피부 자극을 진정시켜볼게요', 보습이면 '수분을 가득 채워볼게요', 영양이면 '피부에 영양을 더해볼게요' 등). 절대로 다른 단계와 동일한 제목을 반복하지 말고 care_type에 맞게 다르게 작성할 것."
-                    + "\n- description: 체크인 상태, 유저 피부타입, 과거 3분 회복모드 피드백을 반영하여 왜 이 케어가 필요한지 설명하는 2~3단락 문장 (줄바꿈 \\n 포함)."
-                    + "\n- precautions: 체크리스트용 2~3개 문장을 줄바꿈(\\n)으로 구분하여 작성."
-                    + "\n- recommended_ingredients: 해당 케어 단계에 적합한 3개 성분을 쉼표로 구분."
-                    + "\n- product_features: '사용할 제품' 카드의 체크포인트에 들어갈 2문장을 배열로 작성."
-                    + "\n\n[유저 기본 체질 데이터 (온보딩)]"
+            // StringBuilder로 루프 내 += 경고 해결
+            StringBuilder careTypesPlanBuilder = new StringBuilder();
+            for (int i = 0; i < careTypes.size(); i++) {
+                careTypesPlanBuilder.append(String.format("\n- %d단계: %s", (i + 1), careTypes.get(i).name()));
+            }
+
+            String prompt = "오늘 유저의 피부 컨디션에 맞춰 총 " + totalSteps + "단계의 회복 스킨케어 루틴을 작성하세요."
+                    + "\n\n[루틴 전체 가이드라인 (중요)]"
+                    + "\n1. 각 단계의 내용(title, description)이 이전 단계에서 다음 단계로 자연스럽게 연결되도록 유기적인 서사(스토리)로 작성하세요."
+                    + "\n2. 문구가 서로 중복되거나 따로 노는 느낌이 들지 않도록 하나의 완성된 코스처럼 구성하세요."
+                    + "\n\n[반환 JSON 구조]"
+                    + "\n{\n  \"steps\": [\n    {\n      \"step_order\": 1,\n      \"title\": \"...\",\n      \"description\": \"...\",\n      \"precautions\": \"...\",\n      \"recommended_ingredients\": \"...\",\n      \"product_features\": [\"...\", \"...\"],\n      \"reason\": \"...\"\n    }\n  ]\n}"
+                    + "\n\n[단계별 작성 조건]"
+                    + "\n- title: 부드럽고 다정한 1문장 케어 목표."
+                    + "\n- description: 체크인 및 피로도를 고려하여 앞/뒤 단계와의 연결성을 살린 2~3단락 설명 (줄바꿈 \\n 포함)."
+                    + "\n- precautions: 2~3개 주의사항 문장을 줄바꿈(\\n)으로 구분."
+                    + "\n- recommended_ingredients: 해당 단계에 맞는 핵심 추천 성분 3개를 쉼표로 구분."
+                    + "\n- product_features: 카드용 스펙 2문장 배열."
+                    + "\n\n[유저 기본 프로필 데이터]"
                     + "\n- 피부 타입: " + skinTypeStr
                     + "\n- 민감도: " + sensitivityStr
-                    + "\n- 주요 피부 고민: " + concernsStr
-                    + "\n\n[유저의 과거 3분 회복 모드 피드백 (개선 반영 요구사항)]"
+                    + "\n- 고민: " + concernsStr
+                    + "\n\n[이전 회복 모드 피드백]"
                     + "\n" + feedbackStr
-                    + "\n\n[오늘의 체크인 상태]"
-                    + "\n- step_order: " + stepOrder
-                    + "\n- care_type: " + careType
-                    + "\n- cosmetic_name: " + cosmeticName
-                    + "\n- cosmetic_type: " + cosmeticType
-                    + "\n- cosmetic_ingredients: " + cosmeticIngredients
-                    + "\n- trouble_level: " + safeLevel(checkin.getAnalyzedTrouble())
-                    + "\n- redness_level: " + safeLevel(checkin.getAnalyzedRedness())
-                    + "\n- moisture_level: " + safeLevel(checkin.getAnalyzedMoisture())
-                    + "\n- oiliness_level: " + safeLevel(checkin.getAnalyzedOiliness());
+                    + "\n\n[오늘의 체크인 상태 및 스텝 구성 플랜]"
+                    + "\n- 피로도 점수: " + checkin.getFatigue() + "/5"
+                    + "\n- 피부당김 점수: " + checkin.getTightness() + "/5"
+                    + "\n- 붉은기 점수: " + checkin.getRedness() + "/5"
+                    + careTypesPlanBuilder;
 
             Map<String, Object> payload = Map.of(
                     "model", openAiModel,
                     "temperature", 0.4,
                     "response_format", Map.of("type", "json_object"),
                     "messages", List.of(
-                            Map.of("role", "system", "content", "너는 스킨케어 루틴 코치다. 유저의 피부 체질 데이터와 과거 3분 회복모드 피드백을 반드시 고려하여 맞춤형 문구와 성분을 제시하라. 반드시 요청된 JSON 포맷으로만 한국어로 답변한다."),
+                            Map.of("role", "system", "content", "너는 친절하고 전문적인 스킨케어 코치다. 전체 루틴 단계가 유기적이고 완벽하게 연결된 하나의 스토리라인이 되도록 루틴을 구성하라. 반드시 요청된 JSON 포맷으로 한국어로 답변한다."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
@@ -356,7 +393,7 @@ public class SkinRoutineService {
                     .body(String.class);
 
             if (responseBody == null || responseBody.isBlank()) {
-                return fallbackStepContent(careType, cosmetic);
+                return defaultList;
             }
 
             JsonNode root = objectMapper.readTree(responseBody);
@@ -368,33 +405,47 @@ public class SkinRoutineService {
                     .trim();
 
             if (content.isBlank()) {
-                return fallbackStepContent(careType, cosmetic);
+                return defaultList;
             }
 
             JsonNode contentJson = objectMapper.readTree(content);
+            JsonNode stepsNode = contentJson.path("steps");
 
-            List<String> productFeatures = new ArrayList<>();
-            JsonNode featuresNode = contentJson.path("product_features");
-            if (featuresNode.isArray()) {
-                for (JsonNode f : featuresNode) {
-                    productFeatures.add(f.asText());
+            if (!stepsNode.isArray() || stepsNode.size() < totalSteps) {
+                return defaultList;
+            }
+
+            List<LlmStepContent> result = new ArrayList<>();
+            for (int i = 0; i < totalSteps; i++) {
+                JsonNode stepNode = stepsNode.get(i);
+                SkinCareType careType = careTypes.get(i);
+
+                List<String> productFeatures = new ArrayList<>();
+                JsonNode featuresNode = stepNode.path("product_features");
+                if (featuresNode.isArray()) {
+                    for (JsonNode f : featuresNode) {
+                        productFeatures.add(f.asText());
+                    }
                 }
-            }
-            if (productFeatures.isEmpty()) {
-                productFeatures = fallbackProductFeatures(careType, cosmetic);
+                if (productFeatures.isEmpty()) {
+                    productFeatures = fallbackProductFeatures(careType, null);
+                }
+
+                result.add(new LlmStepContent(
+                        readOrDefault(stepNode, "title", fallbackTitle(careType)),
+                        readOrDefault(stepNode, "description", fallbackDescription(careType)),
+                        readOrDefault(stepNode, "precautions", fallbackPrecautions(careType)),
+                        readOrDefault(stepNode, "recommended_ingredients", fallbackRecommendedIngredients(careType)),
+                        productFeatures,
+                        readOrDefault(stepNode, "reason", fallbackReason(careType))
+                ));
             }
 
-            return new LlmStepContent(
-                    readOrDefault(contentJson, "title", fallbackTitle(careType)),
-                    readOrDefault(contentJson, "description", fallbackDescription(careType)),
-                    readOrDefault(contentJson, "precautions", fallbackPrecautions(careType)),
-                    readOrDefault(contentJson, "recommended_ingredients", fallbackRecommendedIngredients(careType)),
-                    productFeatures,
-                    readOrDefault(contentJson, "reason", fallbackReason(careType))
-            );
+            return result;
+
         } catch (Exception e) {
-            log.warn("[SkinRoutine] OpenAI 루틴 스텝 생성 실패: {}", e.getMessage());
-            return fallbackStepContent(careType, cosmetic);
+            log.warn("[SkinRoutine] OpenAI 루틴 통통 생성 실패, 기본 템플릿 사용: {}", e.getMessage());
+            return defaultList;
         }
     }
 
@@ -405,6 +456,11 @@ public class SkinRoutineService {
     ) {
         String value = root.path(key).asText("").trim();
         return value.isBlank() ? defaultValue : value;
+    }
+
+    // null 매개변수 경고 해결을 위한 단축 메서드 Overloading
+    private LlmStepContent fallbackStepContent(SkinCareType careType) {
+        return fallbackStepContent(careType, null);
     }
 
     private LlmStepContent fallbackStepContent(
@@ -498,10 +554,6 @@ public class SkinRoutineService {
 
     private boolean isLow(SkinAnalysisLevel level) {
         return level == SkinAnalysisLevel.LOW;
-    }
-
-    private SkinAnalysisLevel safeLevel(SkinAnalysisLevel level) {
-        return level == null ? SkinAnalysisLevel.UNKNOWN : level;
     }
 
     private SkinRoutineResponse toResponse(
