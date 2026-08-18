@@ -10,9 +10,9 @@ public record HomeResponse(
         String nickname,
         ShiftType shiftType,
 
-        int socialMinutes,
-        int refreshMinutes,
-        int myMinutes,
+        Integer socialMinutes,
+        Integer refreshMinutes,
+        Integer myMinutes,
 
         String aiComment,
 
