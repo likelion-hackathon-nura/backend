@@ -80,6 +80,11 @@ public class CustomEventService {
         LocalDate today =
                 LocalDate.now(KST);
 
+        ensureTodayDutyScheduleExists(
+                userId,
+                today
+        );
+
         DailyTimeAllocation allocation =
                 dailyTimeAllocationRepository
                         .findByUserIdAndDate(
@@ -204,6 +209,14 @@ public class CustomEventService {
 
         LocalDate today =
                 LocalDate.now(KST);
+
+        if (request.startAt().toLocalDate().equals(today)
+                && request.endAt().toLocalDate().equals(today)) {
+            ensureTodayDutyScheduleExists(
+                    userId,
+                    today
+            );
+        }
 
         if (!request.startAt().toLocalDate().equals(today)
                 || !request.endAt().toLocalDate().equals(today)) {
@@ -424,6 +437,23 @@ public class CustomEventService {
                     "일정 추가는 오늘 날짜만 가능합니다."
             );
         }
+    }
+
+    private void ensureTodayDutyScheduleExists(
+            Long userId,
+            LocalDate today
+    ) {
+        if (dutyScheduleRepository.existsByUserIdAndDate(
+                    userId,
+                    today
+        )) {
+            return;
+        }
+
+        throw new BaseException(
+                    ErrorCode.SCHEDULE_REQUIRED,
+                    "오늘 시간 설계 생성 후 일정을 추가할 수 있습니다."
+        );
     }
 
     private void validateCreateRequest(

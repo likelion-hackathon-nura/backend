@@ -2,6 +2,7 @@ package org.example.nura.domain.schedule.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.nura.domain.home.service.HomeService;
 import org.example.nura.global.infra.ocr.DutyScheduleOcrClient;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.example.nura.domain.schedule.dto.request.DutyScheduleItemRequest;
@@ -67,6 +68,7 @@ public class DutyScheduleService {
     private final DailyPlanSummaryCalculator dailyPlanSummaryCalculator;
     private final TimeBlockOverlayService timeBlockOverlayService;
     private final ObjectMapper objectMapper;
+    private final HomeService homeService;
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public DutyScheduleOcrResponse recognizeSchedule(
@@ -279,6 +281,7 @@ public class DutyScheduleService {
                         .orElse(null);
 
         if (allocation == null) {
+            homeService.ensureToday(userId);
             return;
         }
 

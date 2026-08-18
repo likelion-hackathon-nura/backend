@@ -34,6 +34,13 @@ public class HomeController {
         HomeResponse response =
                 homeService.ensureToday(userId);
 
+        if (response.socialMinutes() == null) {
+            return ApiResponse.success(
+                    "오늘 등록된 근무표가 없습니다.",
+                    response
+            );
+        }
+
         return ApiResponse.success(
                 "오늘의 시간 설계가 생성되었습니다.",
                 response
@@ -50,6 +57,13 @@ public class HomeController {
     ) {
         HomeResponse response =
                 homeService.getToday(userId);
+
+        if (response.socialMinutes() == null) {
+            return ApiResponse.success(
+                    "오늘 등록된 근무표가 없습니다.",
+                    response
+            );
+        }
 
         return ApiResponse.success(
                 "오늘의 시간 설계 조회에 성공했습니다.",

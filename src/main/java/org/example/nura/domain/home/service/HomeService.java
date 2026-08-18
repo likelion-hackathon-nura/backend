@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -62,12 +63,24 @@ public class HomeService {
                                 userId,
                                 today
                         )
-                        .orElseThrow(() ->
-                                new BaseException(
-                                        ErrorCode.RESOURCE_NOT_FOUND,
-                                        "오늘 생성된 시간 설계가 없습니다."
-                                )
-                        );
+                        .orElse(null);
+
+        if (allocation == null) {
+            if (!dutyScheduleRepository.existsByUserIdAndDate(
+                    userId,
+                    today
+            )) {
+                return createNoScheduleHomeResponse(
+                        userId,
+                        today
+                );
+            }
+
+            throw new BaseException(
+                    ErrorCode.RESOURCE_NOT_FOUND,
+                    "오늘 생성된 시간 설계가 없습니다."
+            );
+        }
 
         return toResponse(
                 userId,
@@ -97,6 +110,13 @@ public class HomeService {
                     userId,
                     today,
                     existing
+            );
+        }
+
+        if (!dutyScheduleRepository.existsByUserIdAndDate(userId, today)) {
+            return createNoScheduleHomeResponse(
+                    userId,
+                    today
             );
         }
 
@@ -153,6 +173,28 @@ public class HomeService {
                 today,
                 allocation,
                 context
+        );
+    }
+
+    private HomeResponse createNoScheduleHomeResponse(
+            Long userId,
+            LocalDate today
+    ) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
+                );
+
+        return new HomeResponse(
+                today,
+                user.getNickname(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                Collections.emptyList(),
+                Collections.emptyList()
         );
     }
 

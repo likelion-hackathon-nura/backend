@@ -34,7 +34,10 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
 
     // External
-    EXTERNAL_API_ERROR(HttpStatus.BAD_GATEWAY, "E001", "외부 서비스 오류가 발생했습니다.");
+    EXTERNAL_API_ERROR(HttpStatus.BAD_GATEWAY, "E001", "외부 서비스 오류가 발생했습니다."),
+
+    // Home
+    SCHEDULE_REQUIRED(HttpStatus.CONFLICT, "H001", "오늘 근무표 등록 후 홈 설계를 생성할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;
