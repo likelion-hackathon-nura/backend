@@ -19,11 +19,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+
 import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
-// 클래스 레벨의 @Transactional(readOnly = true) 제거!
 public class CheckinService {
 
     private final UserRepository userRepository;
@@ -32,9 +32,6 @@ public class CheckinService {
     private final SkinAnalysisService skinAnalysisService;
     private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 단순 상태 조회 (읽기 전용 트랜잭션 개별 적용)
-     */
     @Transactional(readOnly = true)
     public CheckinStatusResponse getStatus(
             Long userId,
@@ -65,9 +62,6 @@ public class CheckinService {
         );
     }
 
-    /**
-     * 체크인 생성 (메서드 전체에는 트랜잭션이 없음 -> AI 통신 시 DB 커넥션 안 잡음)
-     */
     public CheckinResponse create(
             Long userId,
             CheckinCreateRequest request
@@ -77,7 +71,6 @@ public class CheckinService {
                         new BaseException(ErrorCode.RESOURCE_NOT_FOUND)
                 );
 
-        // 1. 애플리케이션 1차 중복 검사 (단순 조회)
         if (checkinRepository.existsByUserIdAndDate(userId, request.date())) {
             throw new BaseException(
                     ErrorCode.DUPLICATE_RESOURCE,
@@ -90,16 +83,17 @@ public class CheckinService {
 
         String photoUrl = null;
 
-        // 3. 외부 AI 피부 분석 (DB 트랜잭션 밖 - 외부 통신 중 Connection 점유 없음!)
+        // 외부 AI 분석 (근무 정보, 사진 정량 분석, GPT 코멘트/태그 통합 처리)
         SkinAnalysisService.AnalysisResult analysisResult =
                 skinAnalysisService.analyze(
+                        userId,
+                        request.date(),
                         request.photo(),
                         request.fatigue(),
                         tightnessScore,
                         rednessScore
                 );
 
-        // 4. DB 저장은 TransactionTemplate을 통해 '순수 쓰기 트랜잭션'으로만 실행
         return transactionTemplate.execute(status ->
                 saveCheckinLogic(user, request, tightnessScore, rednessScore, photoUrl, analysisResult)
         );
@@ -128,7 +122,11 @@ public class CheckinService {
                     analysisResult.analyzedMoisture(),
                     analysisResult.analyzedOiliness(),
                     analysisResult.analyzedTrouble(),
-                    analysisResult.aiComment()
+                    analysisResult.aiComment(),
+                    analysisResult.rednessComment(),
+                    analysisResult.moistureComment(),
+                    analysisResult.troubleComment(),
+                    analysisResult.tags()
             );
 
             Checkin savedCheckin = checkinRepository.save(checkin);
@@ -184,7 +182,6 @@ public class CheckinService {
             return RecoveryLevel.LEVEL_1;
         }
     }
-
 
     private SkinAnalysisLevel defaultUnknown(
             SkinAnalysisLevel value

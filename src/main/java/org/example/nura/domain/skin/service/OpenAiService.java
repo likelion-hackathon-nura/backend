@@ -3,6 +3,8 @@ package org.example.nura.domain.skin.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.example.nura.domain.skin.entity.enums.SkinAnalysisLevel;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,7 +46,7 @@ public class OpenAiService {
                 .build();
     }
 
-    public String generateAiComment(
+    public AiAnalysisOutput generateAiAnalysis(
             Integer fatigue,
             Integer tightness,
             Integer redness,
@@ -55,29 +57,41 @@ public class OpenAiService {
             SkinAnalysisLevel analyzedRedness,
             SkinAnalysisLevel analyzedMoisture,
             SkinAnalysisLevel analyzedOiliness,
-            SkinAnalysisLevel analyzedTrouble
+            SkinAnalysisLevel analyzedTrouble,
+            String scheduleContext
     ) {
         if (openAiApiKey == null || openAiApiKey.isBlank()) {
-            return fallbackComment(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
+            return fallbackAnalysis(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
         }
 
         try {
-            String userPrompt = "사용자 체크인 정보와 정량 분석 결과를 바탕으로 한국어 1문장 피부 피드백을 작성해주세요."
-                    + "\n- fatigue: " + fatigue
-                    + "\n- tightness: " + tightness
-                    + "\n- redness: " + redness
-                    + "\n- acne_count: " + acneCount
-                    + "\n- redness_score: " + rednessScore
-                    + "\n- moisture_score: " + moistureScore
-                    + "\n- oiliness_score: " + oilinessScore;
+            String userPrompt = "다음 사용자 체크인, 피부 분석 정량 데이터, 최근 근무 스케줄 정보를 종합 분석하여 JSON 형태로 응답해 주세요."
+                    + "\n\n[최근 근무 스케줄]\n" + scheduleContext
+                    + "\n\n[사용자 문진 지표]\n- 피로도(fatigue): " + fatigue
+                    + "\n- 피부 당김(tightness): " + tightness
+                    + "\n- 붉은기(redness): " + redness
+                    + "\n\n[사진 정량 분석 결과]\n- 트러블 개수(acneCount): " + acneCount
+                    + "\n- 붉은기 점수(rednessScore): " + rednessScore
+                    + "\n- 수분 점수(moistureScore): " + moistureScore
+                    + "\n- 유분 점수(oilinessScore): " + oilinessScore
+                    + "\n\n[요청 JSON 포맷]"
+                    + "\n{"
+                    + "\n  \"aiComment\": \"근무 패턴과 피부 상태를 결합한 종합 AI 총평 코멘트 (50자 이내)\","
+                    + "\n  \"rednessComment\": \"붉은기 상태 분석 요약문 1문장\","
+                    + "\n  \"moistureComment\": \"수분/당김 상태 분석 요약문 1문장\","
+                    + "\n  \"troubleComment\": \"트러블/유분 상태 분석 요약문 1문장\","
+                    + "\n  \"tags\": [\"태그1\", \"태그2\"]"
+                    + "\n}"
+                    + "\n* 태그 조건: 근무 맥락(예: 연속 근무 피로 누적, 야간 근무 자극)과 추천 케어 방향(예: 진정과 보습 중심, 속수분 충전)을 포함해 최대 2개의 짧은 태그를 생성하세요.";
 
             Map<String, Object> payload = Map.of(
                     "model", openAiModel,
                     "temperature", 0.4,
+                    "response_format", Map.of("type", "json_object"),
                     "messages", List.of(
                             Map.of(
                                     "role", "system",
-                                    "content", "너는 피부 진단 코멘트를 작성하는 어시스턴트다. 40자 이내로 간결하게 작성한다."
+                                    "content", "너는 간호사 등 교대 근무자의 피부 및 시프트 스케줄 분석 전문 AI 헬스케어 어시스턴트이다."
                             ),
                             Map.of(
                                     "role", "user",
@@ -95,55 +109,49 @@ public class OpenAiService {
                     .body(String.class);
 
             if (responseBody == null || responseBody.isBlank()) {
-                return fallbackComment(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
+                return fallbackAnalysis(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
             }
 
             JsonNode root = objectMapper.readTree(responseBody);
-            JsonNode contentNode = root.path("choices")
-                    .path(0)
-                    .path("message")
-                    .path("content");
+            String jsonContent = root.path("choices").path(0).path("message").path("content").asText();
+            JsonNode parsedJson = objectMapper.readTree(jsonContent);
 
-            if (contentNode.isMissingNode()) {
-                return fallbackComment(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
-            }
+            String aiComment = parsedJson.path("aiComment").asText("오늘 피부 상태에 맞춘 맞춤 케어를 추천합니다.");
+            String rednessComment = parsedJson.path("rednessComment").asText("붉은기 상태가 관찰됩니다.");
+            String moistureComment = parsedJson.path("moistureComment").asText("충분한 수분 공급이 필요합니다.");
+            String troubleComment = parsedJson.path("troubleComment").asText("피부 청결 유지가 중요합니다.");
 
-            String comment = contentNode.asText().trim();
-            return comment.isBlank()
-                    ? fallbackComment(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble)
-                    : comment;
+            List<String> tagList = objectMapper.convertValue(
+                    parsedJson.path("tags"),
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+            );
+            String tags = (tagList != null && !tagList.isEmpty()) ? String.join(",", tagList) : "근무 피로 누적,보습 케어";
+
+            return new AiAnalysisOutput(aiComment, rednessComment, moistureComment, troubleComment, tags);
 
         } catch (Exception e) {
-            log.warn("[OpenAiService] OpenAI API 코멘트 생성 호출 실패: {}", e.getMessage());
-            return fallbackComment(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
+            log.warn("[OpenAiService] OpenAI 피부 분석 생성 실패: {}", e.getMessage());
+            return fallbackAnalysis(analyzedRedness, analyzedMoisture, analyzedOiliness, analyzedTrouble);
         }
     }
 
-    private String fallbackComment(
+    private AiAnalysisOutput fallbackAnalysis(
             SkinAnalysisLevel analyzedRedness,
             SkinAnalysisLevel analyzedMoisture,
             SkinAnalysisLevel analyzedOiliness,
             SkinAnalysisLevel analyzedTrouble
     ) {
-        if (analyzedTrouble == SkinAnalysisLevel.HIGH || analyzedRedness == SkinAnalysisLevel.HIGH) {
-            return "붉은기/트러블이 높아 진정 위주 케어를 권장합니다.";
-        }
+        String aiComment = "오늘 피부 상태에 맞춘 균형 루틴을 추천합니다.";
+        String rednessComment = analyzedRedness == SkinAnalysisLevel.HIGH ? "붉은기가 높아 진정 케어가 필요합니다." : "붉은기 상태가 양호합니다.";
+        String moistureComment = analyzedMoisture == SkinAnalysisLevel.LOW ? "수분 지수가 낮아 속건조 케어가 필요합니다." : "수분 지수가 안정적입니다.";
+        String troubleComment = analyzedTrouble == SkinAnalysisLevel.HIGH ? "트러블 주의가 필요합니다." : "트러블 우려가 낮은 상태입니다.";
+        String tags = "근무 피로 누적,진정과 보습 중심";
 
-        if (analyzedMoisture == SkinAnalysisLevel.LOW) {
-            return "수분 지표가 낮아 보습 중심 루틴을 권장합니다.";
-        }
-
-        if (analyzedOiliness == SkinAnalysisLevel.HIGH) {
-            return "유분 지표가 높아 가벼운 수분 케어를 권장합니다.";
-        }
-
-        return "오늘 피부 상태에 맞는 균형 루틴을 권장합니다.";
+        return new AiAnalysisOutput(aiComment, rednessComment, moistureComment, troubleComment, tags);
     }
 
     public IngredientParseResult parseIngredients(String rawText) {
-        // API Key 검사 및 빈 텍스트 인풋 Fallback
         if (openAiApiKey == null || openAiApiKey.isBlank()) {
-            log.warn("[OpenAiService] OpenAI API Key가 설정되지 않았습니다. 원본 텍스트를 반환합니다.");
             return new IngredientParseResult(rawText, "없음");
         }
 
@@ -194,6 +202,16 @@ public class OpenAiService {
             log.warn("[OpenAiService] 성분 파싱 실패: {}", e.getMessage());
             return new IngredientParseResult(rawText, "없음");
         }
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class AiAnalysisOutput {
+        private String aiComment;
+        private String rednessComment;
+        private String moistureComment;
+        private String troubleComment;
+        private String tags;
     }
 
     public record IngredientParseResult(

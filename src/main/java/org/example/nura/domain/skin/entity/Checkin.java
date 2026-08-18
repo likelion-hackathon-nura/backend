@@ -85,6 +85,18 @@ public class Checkin extends BaseTimeEntity {
     @Column(name = "ai_comment", columnDefinition = "TEXT")
     private String aiComment;
 
+    @Column(name = "redness_comment", columnDefinition = "TEXT")
+    private String rednessComment;
+
+    @Column(name = "moisture_comment", columnDefinition = "TEXT")
+    private String moistureComment;
+
+    @Column(name = "trouble_comment", columnDefinition = "TEXT")
+    private String troubleComment;
+
+    @Column(name = "tags", length = 100)
+    private String tags;
+
     private Checkin(
             User user,
             LocalDate date,
@@ -124,12 +136,20 @@ public class Checkin extends BaseTimeEntity {
             SkinAnalysisLevel analyzedMoisture,
             SkinAnalysisLevel analyzedOiliness,
             SkinAnalysisLevel analyzedTrouble,
-            String aiComment
+            String aiComment,
+            String rednessComment,
+            String moistureComment,
+            String troubleComment,
+            String tags
     ) {
         this.analyzedRedness = analyzedRedness;
         this.analyzedMoisture = analyzedMoisture;
         this.analyzedOiliness = analyzedOiliness;
         this.analyzedTrouble = analyzedTrouble;
         this.aiComment = aiComment;
+        this.rednessComment = rednessComment;
+        this.moistureComment = moistureComment;
+        this.troubleComment = troubleComment;
+        this.tags = tags;
     }
 }
