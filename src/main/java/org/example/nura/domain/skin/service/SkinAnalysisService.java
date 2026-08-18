@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.nura.domain.schedule.entity.DutySchedule;
+import org.example.nura.domain.schedule.repository.DutyScheduleRepository;
 import org.example.nura.domain.skin.entity.enums.SkinAnalysisLevel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
@@ -18,6 +20,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -25,6 +30,7 @@ import java.time.Duration;
 public class SkinAnalysisService {
 
     private final OpenAiService openAiService;
+    private final DutyScheduleRepository dutyScheduleRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${ai.fastapi.base-url:http://localhost:8000}")
@@ -47,18 +53,40 @@ public class SkinAnalysisService {
     }
 
     public AnalysisResult analyze(
+            Long userId,
+            LocalDate checkinDate,
             MultipartFile photo,
             Integer fatigue,
             Integer tightness,
             Integer redness
     ) {
+        // 최근 5일간의 근무 스케줄 조회 및 문맥 가공
+        LocalDate endDate = checkinDate != null ? checkinDate : LocalDate.now();
+        LocalDate startDate = endDate.minusDays(4);
+
+        List<DutySchedule> recentSchedules = dutyScheduleRepository
+                .findAllByUserIdAndDateBetweenOrderByDateAsc(userId, startDate, endDate);
+
+        String scheduleContext = buildScheduleContext(recentSchedules, startDate, endDate);
+
         if (photo == null || photo.isEmpty()) {
+            OpenAiService.AiAnalysisOutput aiOutput = openAiService.generateAiAnalysis(
+                    fatigue, tightness, redness,
+                    null, null, null, null,
+                    SkinAnalysisLevel.UNKNOWN, SkinAnalysisLevel.UNKNOWN, SkinAnalysisLevel.UNKNOWN, SkinAnalysisLevel.UNKNOWN,
+                    scheduleContext
+            );
+
             return new AnalysisResult(
                     SkinAnalysisLevel.UNKNOWN,
                     SkinAnalysisLevel.UNKNOWN,
                     SkinAnalysisLevel.UNKNOWN,
                     SkinAnalysisLevel.UNKNOWN,
-                    "사진이 없어 문진 결과 기준으로 루틴을 추천합니다."
+                    aiOutput.getAiComment(),
+                    aiOutput.getRednessComment(),
+                    aiOutput.getMoistureComment(),
+                    aiOutput.getTroubleComment(),
+                    aiOutput.getTags()
             );
         }
 
@@ -69,7 +97,7 @@ public class SkinAnalysisService {
         SkinAnalysisLevel analyzedOiliness = mapScoreToLevel(metrics.oilinessScore());
         SkinAnalysisLevel analyzedTrouble = mapAcneToLevel(metrics.acneCount());
 
-        String aiComment = openAiService.generateAiComment(
+        OpenAiService.AiAnalysisOutput aiOutput = openAiService.generateAiAnalysis(
                 fatigue,
                 tightness,
                 redness,
@@ -80,7 +108,8 @@ public class SkinAnalysisService {
                 analyzedRedness,
                 analyzedMoisture,
                 analyzedOiliness,
-                analyzedTrouble
+                analyzedTrouble,
+                scheduleContext
         );
 
         return new AnalysisResult(
@@ -88,8 +117,22 @@ public class SkinAnalysisService {
                 analyzedMoisture,
                 analyzedOiliness,
                 analyzedTrouble,
-                aiComment
+                aiOutput.getAiComment(),
+                aiOutput.getRednessComment(),
+                aiOutput.getMoistureComment(),
+                aiOutput.getTroubleComment(),
+                aiOutput.getTags()
         );
+    }
+
+    private String buildScheduleContext(List<DutySchedule> schedules, LocalDate startDate, LocalDate endDate) {
+        if (schedules.isEmpty()) {
+            return "최근 등록된 근무 스케줄 정보가 없습니다.";
+        }
+
+        return schedules.stream()
+                .map(s -> s.getDate() + ": " + s.getShiftType().name() + " 근무")
+                .collect(Collectors.joining("\n"));
     }
 
     private QuantitativeMetrics requestQuantitativeMetrics(MultipartFile photo) {
@@ -139,30 +182,16 @@ public class SkinAnalysisService {
     }
 
     private SkinAnalysisLevel mapScoreToLevel(Integer score) {
-        if (score == null) {
-            return SkinAnalysisLevel.UNKNOWN;
-        }
-
-        if (score <= 33) {
-            return SkinAnalysisLevel.LOW;
-        }
-        if (score <= 66) {
-            return SkinAnalysisLevel.MEDIUM;
-        }
+        if (score == null) return SkinAnalysisLevel.UNKNOWN;
+        if (score <= 33) return SkinAnalysisLevel.LOW;
+        if (score <= 66) return SkinAnalysisLevel.MEDIUM;
         return SkinAnalysisLevel.HIGH;
     }
 
     private SkinAnalysisLevel mapAcneToLevel(Integer acneCount) {
-        if (acneCount == null) {
-            return SkinAnalysisLevel.UNKNOWN;
-        }
-
-        if (acneCount == 0) {
-            return SkinAnalysisLevel.LOW;
-        }
-        if (acneCount <= 3) {
-            return SkinAnalysisLevel.MEDIUM;
-        }
+        if (acneCount == null) return SkinAnalysisLevel.UNKNOWN;
+        if (acneCount == 0) return SkinAnalysisLevel.LOW;
+        if (acneCount <= 3) return SkinAnalysisLevel.MEDIUM;
         return SkinAnalysisLevel.HIGH;
     }
 
@@ -171,7 +200,11 @@ public class SkinAnalysisService {
             SkinAnalysisLevel analyzedMoisture,
             SkinAnalysisLevel analyzedOiliness,
             SkinAnalysisLevel analyzedTrouble,
-            String aiComment
+            String aiComment,
+            String rednessComment,
+            String moistureComment,
+            String troubleComment,
+            String tags
     ) {
     }
 

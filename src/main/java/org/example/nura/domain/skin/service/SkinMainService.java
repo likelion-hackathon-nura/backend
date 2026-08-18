@@ -4,8 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.example.nura.domain.skin.dto.response.SkinMainTodayResponse;
 import org.example.nura.domain.skin.dto.response.SkinMainTodayResponse.WeeklyRecordDto;
 import org.example.nura.domain.skin.entity.Checkin;
+import org.example.nura.domain.skin.entity.RoutineStep;
 import org.example.nura.domain.skin.entity.SkinRoutine;
 import org.example.nura.domain.skin.repository.CheckinRepository;
+import org.example.nura.domain.skin.repository.RoutineStepRepository;
 import org.example.nura.domain.skin.repository.SkinRoutineRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public class SkinMainService {
 
     private final CheckinRepository checkinRepository;
     private final SkinRoutineRepository skinRoutineRepository;
+    private final RoutineStepRepository routineStepRepository;
 
     public SkinMainTodayResponse getTodayMain(Long userId, LocalDate today) {
         // 1. 오늘 체크인 여부 조회
@@ -57,8 +60,13 @@ public class SkinMainService {
         Optional<SkinRoutine> routineOpt =
                 skinRoutineRepository.findByCheckinUserIdAndCheckinDate(userId, today);
 
+        // 루틴 스텝 및 제품 정보 조회 (오른쪽 카드 렌더링용)
+        List<RoutineStep> steps = routineOpt
+                .map(r -> routineStepRepository.findAllByRoutineIdOrderByStepOrderAsc(r.getId()))
+                .orElse(List.of());
+
         SkinMainTodayResponse.RoutineSummaryDto routineSummary =
-                routineOpt.map(SkinMainTodayResponse.RoutineSummaryDto::from).orElse(null);
+                routineOpt.map(r -> SkinMainTodayResponse.RoutineSummaryDto.of(r, steps)).orElse(null);
 
         // 오늘 3분 회복 모드 완료 여부 판단
         boolean isRoutineCompleted = routineOpt.map(SkinRoutine::isCompleted).orElse(false);
@@ -89,6 +97,7 @@ public class SkinMainService {
         LocalDate monday = today.with(DayOfWeek.MONDAY);
         LocalDate sunday = today.with(DayOfWeek.SUNDAY);
 
+        // 1. 주간 체크인 목록 조회
         List<Checkin> weeklyCheckins =
                 checkinRepository.findAllByUserIdAndDateBetweenOrderByDateAsc(userId, monday, sunday);
 
@@ -96,18 +105,36 @@ public class SkinMainService {
                 .map(Checkin::getDate)
                 .collect(Collectors.toSet());
 
+        // 2. 주간 루틴 목록 조회 (새로 추가한 Repository 메서드 사용)
+        List<SkinRoutine> weeklyRoutines =
+                skinRoutineRepository.findAllByUserIdAndDateBetween(userId, monday, sunday);
+
+        // 3. 완료된(completed = true) 루틴의 날짜 Set 추출
+        Set<LocalDate> completedRoutineDates = weeklyRoutines.stream()
+                .filter(SkinRoutine::isCompleted)
+                .map(r -> r.getCheckin().getDate())
+                .collect(Collectors.toSet());
+
+        // 4. 주간 날짜별 상태 결정 (COMPLETED / CHECKED_IN / NONE)
         List<WeeklyRecordDto> records = new ArrayList<>();
         for (int i = 0; i < 7; i++) {
             LocalDate date = monday.plusDays(i);
             boolean isChecked = checkedDates.contains(date);
+            boolean isRoutineDone = completedRoutineDates.contains(date);
+
+            String status = "NONE";
+            if (isRoutineDone) {
+                status = "COMPLETED";     // 체크인 & 회복 루틴 완료
+            } else if (isChecked) {
+                status = "CHECKED_IN";    // 체크인만 완료
+            }
 
             records.add(WeeklyRecordDto.builder()
                     .dayOfWeek(date.getDayOfWeek().name().substring(0, 3))
                     .date(date)
-                    .status(isChecked ? "COMPLETED" : "NONE")
+                    .status(status)
                     .build());
         }
 
         return records;
-    }
-}
+    } }
