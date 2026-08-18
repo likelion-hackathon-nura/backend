@@ -120,6 +120,16 @@ public class RoutineStep extends BaseTimeEntity {
             String recommendedIngredients,
             String reason
     ) {
+        if (routine == null) {
+            throw new IllegalArgumentException("루틴 정보는 필수입니다.");
+        }
+        if (stepOrder == null || stepOrder < 1) {
+            throw new IllegalArgumentException("올바른 단계 순서가 필요합니다.");
+        }
+        if (careType == null || title == null) {
+            throw new IllegalArgumentException("케어 타입과 제목은 필수입니다.");
+        }
+
         return new RoutineStep(
                 routine,
                 registeredCosmetic,

@@ -242,7 +242,7 @@ public class SkinRoutineService {
         careTypes.add(SkinCareType.MOISTURIZING);
 
         if (!careTypes.contains(SkinCareType.SOOTHING)) {
-            careTypes.addFirst(SkinCareType.SOOTHING);
+            careTypes.add(0, SkinCareType.SOOTHING); // Java 버전 안정성 위해 add(0, ...) 사용
         }
 
         while (careTypes.size() < stepCount) {
@@ -319,7 +319,8 @@ public class SkinRoutineService {
                     + "\n- description: 체크인 상태, 유저 피부타입, 과거 3분 회복모드 피드백을 반영하여 왜 이 케어가 필요한지 설명하는 2~3단락 문장 (줄바꿈 \\n 포함)."
                     + "\n- precautions: 체크리스트용 2~3개 문장을 줄바꿈(\\n)으로 구분하여 작성."
                     + "\n- recommended_ingredients: 해당 케어 단계에 적합한 3개 성분을 쉼표로 구분."
-                    + "\n- product_features: '사용할 제품' 카드의 체크포인트에 들어갈 2문장을 배열로 작성."                    + "\n\n[유저 기본 체질 데이터 (온보딩)]"
+                    + "\n- product_features: '사용할 제품' 카드의 체크포인트에 들어갈 2문장을 배열로 작성."
+                    + "\n\n[유저 기본 체질 데이터 (온보딩)]"
                     + "\n- 피부 타입: " + skinTypeStr
                     + "\n- 민감도: " + sensitivityStr
                     + "\n- 주요 피부 고민: " + concernsStr
@@ -585,6 +586,7 @@ public class SkinRoutineService {
         sb.append("오늘은 피부 컨디션 유지를 위한 최소 ").append(stepCount).append("단계만 진행할게요.");
         return sb.toString();
     }
+
     private List<String> parseJsonToList(String json) {
         if (json == null || json.isBlank()) return List.of("기본 보습 성분");
         try {
