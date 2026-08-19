@@ -171,6 +171,18 @@ public class User extends BaseTimeEntity {
         this.shiftNEnd = shiftNEnd;
     }
 
+    public void updateNickname(
+            String nickname
+    ) {
+        this.nickname = nickname;
+    }
+
+    public void updatePasswordHash(
+            String passwordHash
+    ) {
+        this.passwordHash = passwordHash;
+    }
+
     private int clampAdjustment(int value) {
         return Math.max(
                 -2,
