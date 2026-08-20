@@ -182,13 +182,15 @@ public class AuthService {
         skinRoutineRepository.deleteAllByCheckinUserId(userId);
         checkinRepository.deleteAllByUserId(userId);
         registeredCosmeticRepository.deleteAllByUserId(userId);
-        customEventRepository.deleteAllByUserId(userId);
-        dutyScheduleRepository.deleteAllByUserId(userId);
 
         for (DailyTimeAllocation allocation :
                 dailyTimeAllocationRepository.findAllByUserId(userId)) {
             timeBlockRepository.deleteAllByAllocationId(allocation.getId());
         }
+
+        customEventRepository.deleteAllByUserId(userId);
+
+        dutyScheduleRepository.deleteAllByUserId(userId);
 
         dailyTimeAllocationRepository.deleteAllByUserId(userId);
 
